@@ -19,27 +19,34 @@ class ControlLDM(LatentDiffusion):
 
     @torch.no_grad()
     def get_input(self, batch, k, bs=None, *args, **kwargs):
-        x, c = super().get_input(batch, self.first_stage_key, *args, **kwargs)
+        # assign control to c_concat (not neccesary)
+        # add a new key c_control
+        x, c = super().get_input(batch, self.first_stage_key, *args, **kwargs) # c : {c_concat : pimg], c_crossattn : [text + pose]}
         control = batch[self.control_key]
         if bs is not None:
             control = control[:bs]
         control = control.to(self.device)
         control = einops.rearrange(control, 'b h w c -> b c h w')
         control = control.to(memory_format=torch.contiguous_format).float()
-        return x, dict(c_crossattn=[c], c_concat=[control])
+        c["c_control"] = [control]
+        return x, c
+        # return x, dict(c_crossattn=[c], c_concat=[control])
 
     def apply_model(self, x_noisy, t, cond, *args, **kwargs):
         assert isinstance(cond, dict)
-        diffusion_model = self.model.diffusion_model
+        diffusion_model = self.model.diffusion_model # free from wrapper
 
         cond_txt = torch.cat(cond['c_crossattn'], 1)
 
-        if cond['c_concat'] is None:
-            eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=None, only_mid_control=self.only_mid_control)
-        else:
-            control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
-            control = [c * scale for c, scale in zip(control, self.control_scales)]
-            eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
+        # if cond['c_concat'] is None:
+        #     eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=None, only_mid_control=self.only_mid_control)
+        # else:
+        #     control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
+        #     control = [c * scale for c, scale in zip(control, self.control_scales)]
+        #     eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
+        control = self.control_model(x=torch.cat([x_noisy] + cond['c_concat'], dim=1), hint=torch.cat(cond['c_control'], 1), timesteps=t, context=cond_txt)
+        control = [c * scale for c, scale in zip(control, self.control_scales)]
+        eps = diffusion_model(x=torch.cat([x_noisy] + cond['c_concat'], dim=1), timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
 
         return eps
 
