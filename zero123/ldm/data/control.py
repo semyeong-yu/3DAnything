@@ -49,10 +49,9 @@ import math
 #                           batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False)
 
 
-
 class ObjaverseData(Dataset):
     def __init__(self,
-        root_dir='.objaverse/hf-objaverse-v1/views',
+        root_dir='/mnt/datassd/seeha/data/3D/train',
         image_transforms=[],
         ext="png",
         default_trans=torch.zeros(3),
@@ -63,14 +62,13 @@ class ObjaverseData(Dataset):
         
         self.root_dir = Path(root_dir)
         self.default_trans = default_trans
-        self.return_path = return_paths
+        self.return_paths = return_paths
         self.total_view = total_view
-        self.paths = None # TODO
         self.tform = image_transforms
         if not isinstance(ext, (tuple, list, ListConfig)):
             ext = [ext]
         
-        with open(os.path.join(root_dir, 'paths.txt')) as f:
+        with open('/mnt/datassd/seeha/data/3D/paths.txt') as f:
             self.paths = f.read().splitlines()
         total_objects = len(self.paths)
         if validation:
@@ -92,10 +90,10 @@ class ObjaverseData(Dataset):
         return np.array([theta, azimuth, z])
     
     def get_T(self, target_RT, cond_RT):
-        R, T = target_RT[:3, :3], target_RT[:, -1]
+        R, T = target_RT[:3, :3], target_RT[:3, -1]
         T_target = -R.T @ T
 
-        R, T = cond_RT[:3, :3], cond_RT[:, -1]
+        R, T = cond_RT[:3, :3], cond_RT[:3, -1]
         T_cond = -R.T @ T
 
         theta_cond, azimuth_cond, z_cond = self.cartesian_to_spherical(T_cond[None, :])
@@ -112,9 +110,10 @@ class ObjaverseData(Dataset):
         im = im.convert("RGB")
         return self.tform(im)
     
-    def load_im(self, path, color):
+    # def load_im(self, path, color):
+    def load_im(self, path):
         img = plt.imread(path)
-        img[img[:,:,-1] == 0.] = color # fix empty pixels
+        # img[img[:,:,-1] == 0.] = color # fix empty pixels
         img = Image.fromarray(np.uint8(img[:,:,:3]*255.))
         return img
     
@@ -128,10 +127,12 @@ class ObjaverseData(Dataset):
             data["path"] = str(filename)
             
         color = [1., 1., 1., 1.]
-        target_im = self.process_im(self.load_im(os.path.join(filename, '%03d.png' % index_target), color))
-        cond_im = self.process_im(self.load_im(os.path.join(filename, '%03d.png' % index_cond), color))
-        target_RT = np.load(os.path.join(filename, '%03d.npy' % index_target))
-        cond_RT = np.load(os.path.join(filename, '%03d.npy' % index_cond))
+        target_im = self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target))
+        cond_im = self.load_im(os.path.join(filename, 'cannyedge_render', '%03d.png' % index_cond))
+        # target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target), color))
+        # cond_im = self.process_im(self.load_im(os.path.join(filename, '%03d.png' % index_cond), color))
+        target_RT = np.load(os.path.join(filename, 'annotation', '%03d.npy' % index_target), allow_pickle=True).item()['matrix_world']
+        cond_RT = np.load(os.path.join(filename, 'annotation', '%03d.npy' % index_cond), allow_pickle=True).item()['matrix_world']
 
         data["image_target"] = target_im
         data["image_cond"] = cond_im
