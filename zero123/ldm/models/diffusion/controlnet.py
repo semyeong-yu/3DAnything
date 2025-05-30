@@ -21,19 +21,18 @@ class ControlLDM(LatentDiffusion):
     @torch.no_grad()
     # def get_input(self, batch, k, bs=None, *args, **kwargs):
     def get_input(self, batch, k, return_first_stage_outputs=False, cond_key=None, return_original_cond=False, bs=None, uncond=0.05):
-        # assign control to c_concat (not neccesary)
-        # add a new key c_control
         # x, c = super().get_input(batch, self.first_stage_key, *args, **kwargs) # c : {c_concat : pimg], c_crossattn : [text + pose]}
         inputs = super().get_input(batch, k, return_first_stage_outputs, cond_key, return_original_cond, bs, uncond) # c : {c_concat : pimg], c_crossattn : [text + pose]}
         z = inputs[0]
         c = inputs[1]
-        control = batch[self.control_key]
-        if bs is not None:
-            control = control[:bs]
-        control = control.to(self.device)
-        control = einops.rearrange(control, 'b h w c -> b c h w')
-        control = control.to(memory_format=torch.contiguous_format).float()
-        c["c_control"] = [control]
+        # control = c['c_concat']
+        # control = batch[self.control_key]
+        # if bs is not None:
+        #     control = control[:bs]
+        # control = control.to(self.device)
+        # control = einops.rearrange(control, 'b h w c -> b c h w')
+        # control = control.to(memory_format=torch.contiguous_format).float()
+        # c["c_control"] = [control]
         out = [z, c]
         if return_first_stage_outputs:
             out.extend([inputs[2], inputs[3]])
@@ -55,7 +54,7 @@ class ControlLDM(LatentDiffusion):
         #     control = [c * scale for c, scale in zip(control, self.control_scales)]
         #     eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
         # control = self.control_model(x=torch.cat([x_noisy] + cond['c_concat'], dim=1), hint=torch.cat(cond['c_control'], 1), timesteps=t, context=cond_txt)
-        control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_control'], 1), timesteps=t, context=cond_txt)
+        control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
         control = [c * scale for c, scale in zip(control, self.control_scales)]
         # eps = diffusion_model(x=torch.cat([x_noisy] + cond['c_concat'], dim=1), timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
         eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
@@ -84,7 +83,7 @@ class ControlLDM(LatentDiffusion):
         cond = {}
         cond["c_crossattn"] = [c]
         cond["c_concat"] = [torch.zeros([batch_size, 4, image_size // 8, image_size // 8]).to(self.device)]
-        cond["c_control"] = [torch.zeros([batch_size, 4, image_size // 8, image_size // 8]).to(self.device)]
+        # cond["c_control"] = [torch.zeros([batch_size, 4, image_size // 8, image_size // 8]).to(self.device)]
         return cond
 
     @torch.no_grad()
@@ -94,11 +93,12 @@ class ControlLDM(LatentDiffusion):
         log = dict()
         z, c, x, xrec, xc = self.get_input(batch, self.first_stage_key, return_first_stage_outputs=True, return_original_cond=True, bs=N)
         N = min(z.shape[0], N)
-        c_control = c["c_control"][0][:N]
+        # c_control = c["c_control"][0][:N]
+        c_control = c["c_concat"][0][:N]
         n_row = min(x.shape[0], n_row)
         log["inputs"] = x
         log["reconstruction"] = xrec
-        log["control"] = c_control * 2.0 - 1.0
+        log["control"] = c_control
         
         # log["conditioning"] = log_txt_as_img((512, 512), batch[self.cond_stage_key], size=16)
         
