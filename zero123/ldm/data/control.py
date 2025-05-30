@@ -9,46 +9,6 @@ import matplotlib.pyplot as plt
 import os
 import math
 
-# class ObjaverseDataModuleFromConfig(pl.LightningDataModule):
-#     def __init__(self, root_dir, batch_size, total_view, train=None, validation=None,
-#                  test=None, num_workers=4, **kwargs):
-#         super().__init__(self)
-#         self.root_dir = root_dir
-#         self.batch_size = batch_size
-#         self.num_workers = num_workers
-#         self.total_view = total_view
-
-#         if train is not None:
-#             dataset_config = train
-#         if validation is not None:
-#             dataset_config = validation
-
-#         if 'image_transforms' in dataset_config:
-#             image_transforms = [torchvision.transforms.Resize(dataset_config.image_transforms.size)]
-#         else:
-#             image_transforms = []
-#         image_transforms.extend([transforms.ToTensor(),
-#                                 transforms.Lambda(lambda x: rearrange(x * 2. - 1., 'c h w -> h w c'))])
-#         self.image_transforms = torchvision.transforms.Compose(image_transforms)
-
-
-#     def train_dataloader(self):
-#         dataset = ObjaverseData(root_dir=self.root_dir, total_view=self.total_view, validation=False, \
-#                                 image_transforms=self.image_transforms)
-#         sampler = DistributedSampler(dataset)
-#         return wds.WebLoader(dataset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False, sampler=sampler)
-
-#     def val_dataloader(self):
-#         dataset = ObjaverseData(root_dir=self.root_dir, total_view=self.total_view, validation=True, \
-#                                 image_transforms=self.image_transforms)
-#         sampler = DistributedSampler(dataset)
-#         return wds.WebLoader(dataset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False)
-    
-#     def test_dataloader(self):
-#         return wds.WebLoader(ObjaverseData(root_dir=self.root_dir, total_view=self.total_view, validation=self.validation),\
-#                           batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False)
-
-
 class ObjaverseData(Dataset):
     def __init__(self,
         root_dir='/mnt/datassd/seeha/data/3D/train',
@@ -58,7 +18,7 @@ class ObjaverseData(Dataset):
         return_paths=False,
         total_view=12,
         validation=False
-        ) -> None:
+        ):
         
         self.root_dir = Path(root_dir)
         self.default_trans = default_trans

@@ -86,7 +86,7 @@ data:
     train:
       target: ldm.data.control.ObjaverseData
       params:
-        root_dir: '' #TODO
+        # root_dir: '' #TODO
         image_transforms: 
           size: 256
         total_view: 4
@@ -95,7 +95,7 @@ data:
     validation:
       target: ldm.data.control.ObjaverseData
       params:
-        root_dir: '' #TODO
+        # root_dir: '' #TODO
         image_transforms: 
           size: 256
         total_view: 4
