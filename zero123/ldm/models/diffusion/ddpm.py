@@ -759,7 +759,7 @@ class LatentDiffusion(DDPM):
 
     
     @torch.no_grad()
-    def get_input(self, batch, k, return_first_stage_outputs=False, force_c_encode=False,
+    def get_input(self, batch, k, return_first_stage_outputs=False,
                   cond_key=None, return_original_cond=False, bs=None, uncond=0.05):
         # c_concat -> img / c_crossattn -> text (generated from image) + pose
         x = super().get_input(batch, k)
@@ -1312,7 +1312,6 @@ class LatentDiffusion(DDPM):
         log = dict()
         z, c, x, xrec, xc = self.get_input(batch, self.first_stage_key,
                                            return_first_stage_outputs=True,
-                                           force_c_encode=True,
                                            return_original_cond=True,
                                            bs=N)
         N = min(x.shape[0], N)

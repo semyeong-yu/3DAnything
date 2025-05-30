@@ -2,6 +2,7 @@ import einops
 import torch
 import torch.nn as nn
 
+from omegaconf import ListConfig
 from einops import rearrange, repeat
 from torchvision.utils import make_grid
 from ldm.models.diffusion.ddpm import LatentDiffusion
@@ -18,10 +19,14 @@ class ControlLDM(LatentDiffusion):
         self.control_scales = [1.0] * 13
 
     @torch.no_grad()
-    def get_input(self, batch, k, bs=None, *args, **kwargs):
+    # def get_input(self, batch, k, bs=None, *args, **kwargs):
+    def get_input(self, batch, k, return_first_stage_outputs=False, cond_key=None, return_original_cond=False, bs=None, uncond=0.05):
         # assign control to c_concat (not neccesary)
         # add a new key c_control
-        x, c = super().get_input(batch, self.first_stage_key, *args, **kwargs) # c : {c_concat : pimg], c_crossattn : [text + pose]}
+        # x, c = super().get_input(batch, self.first_stage_key, *args, **kwargs) # c : {c_concat : pimg], c_crossattn : [text + pose]}
+        inputs = super().get_input(batch, k, return_first_stage_outputs, cond_key, return_original_cond, bs, uncond) # c : {c_concat : pimg], c_crossattn : [text + pose]}
+        z = inputs[0]
+        c = inputs[1]
         control = batch[self.control_key]
         if bs is not None:
             control = control[:bs]
@@ -29,7 +34,12 @@ class ControlLDM(LatentDiffusion):
         control = einops.rearrange(control, 'b h w c -> b c h w')
         control = control.to(memory_format=torch.contiguous_format).float()
         c["c_control"] = [control]
-        return x, c
+        out = [z, c]
+        if return_first_stage_outputs:
+            out.extend([inputs[2], inputs[3]])
+        if return_original_cond:
+            out.append(inputs[4])
+        return out
         # return x, dict(c_crossattn=[c], c_concat=[control])
 
     def apply_model(self, x_noisy, t, cond, *args, **kwargs):
@@ -44,33 +54,54 @@ class ControlLDM(LatentDiffusion):
         #     control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
         #     control = [c * scale for c, scale in zip(control, self.control_scales)]
         #     eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
-        control = self.control_model(x=torch.cat([x_noisy] + cond['c_concat'], dim=1), hint=torch.cat(cond['c_control'], 1), timesteps=t, context=cond_txt)
+        # control = self.control_model(x=torch.cat([x_noisy] + cond['c_concat'], dim=1), hint=torch.cat(cond['c_control'], 1), timesteps=t, context=cond_txt)
+        control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_control'], 1), timesteps=t, context=cond_txt)
         control = [c * scale for c, scale in zip(control, self.control_scales)]
-        eps = diffusion_model(x=torch.cat([x_noisy] + cond['c_concat'], dim=1), timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
+        # eps = diffusion_model(x=torch.cat([x_noisy] + cond['c_concat'], dim=1), timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
+        eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
 
         return eps
 
+    # @torch.no_grad()
+    # def get_unconditional_conditioning(self, N):
+    #     return self.get_learned_conditioning([""] * N)
     @torch.no_grad()
-    def get_unconditional_conditioning(self, N):
-        return self.get_learned_conditioning([""] * N)
+    def get_unconditional_conditioning(self, batch_size, null_label=None, image_size=512):
+        if null_label is not None:
+            xc = null_label
+            if isinstance(xc, ListConfig):
+                xc = list(xc)
+            if isinstance(xc, dict) or isinstance(xc, list):
+                c = self.get_learned_conditioning(xc)
+            else:
+                if hasattr(xc, "to"):
+                    xc = xc.to(self.device)
+                c = self.get_learned_conditioning(xc)
+        else:
+            # todo: get null label from cond_stage_model
+            raise NotImplementedError()
+        c = repeat(c, '1 ... -> b ...', b=batch_size).to(self.device)
+        cond = {}
+        cond["c_crossattn"] = [c]
+        cond["c_concat"] = [torch.zeros([batch_size, 4, image_size // 8, image_size // 8]).to(self.device)]
+        cond["c_control"] = [torch.zeros([batch_size, 4, image_size // 8, image_size // 8]).to(self.device)]
+        return cond
 
     @torch.no_grad()
-    def log_images(self, batch, N=4, n_row=2, sample=False, ddim_steps=50, ddim_eta=0.0, return_keys=None,
-                   quantize_denoised=True, inpaint=True, plot_denoise_rows=False, plot_progressive_rows=True,
-                   plot_diffusion_rows=False, unconditional_guidance_scale=9.0, unconditional_guidance_label=None,
-                   use_ema_scope=True,
-                   **kwargs):
+    def log_images(self, batch, N=4, n_row=2, sample=False, ddim_steps=50, ddim_eta=0.0, plot_denoise_rows=False, plot_diffusion_rows=False, unconditional_guidance_scale=9.0, unconditional_guidance_label=None):
         use_ddim = ddim_steps is not None
 
         log = dict()
-        z, c = self.get_input(batch, self.first_stage_key, bs=N)
-        c_cat, c = c["c_concat"][0][:N], c["c_crossattn"][0][:N]
+        z, c, x, xrec, xc = self.get_input(batch, self.first_stage_key, return_first_stage_outputs=True, return_original_cond=True, bs=N)
         N = min(z.shape[0], N)
-        n_row = min(z.shape[0], n_row)
-        log["reconstruction"] = self.decode_first_stage(z)
-        log["control"] = c_cat * 2.0 - 1.0
-        log["conditioning"] = log_txt_as_img((512, 512), batch[self.cond_stage_key], size=16)
-
+        c_control = c["c_control"][0][:N]
+        n_row = min(x.shape[0], n_row)
+        log["inputs"] = x
+        log["reconstruction"] = xrec
+        log["control"] = c_control * 2.0 - 1.0
+        
+        # log["conditioning"] = log_txt_as_img((512, 512), batch[self.cond_stage_key], size=16)
+        
         if plot_diffusion_rows:
             # get diffusion row
             diffusion_row = list()
@@ -91,7 +122,7 @@ class ControlLDM(LatentDiffusion):
 
         if sample:
             # get denoise row
-            samples, z_denoise_row = self.sample_log(cond={"c_concat": [c_cat], "c_crossattn": [c]},
+            samples, z_denoise_row = self.sample_log(cond=c,
                                                      batch_size=N, ddim=use_ddim,
                                                      ddim_steps=ddim_steps, eta=ddim_eta)
             x_samples = self.decode_first_stage(samples)
@@ -101,27 +132,28 @@ class ControlLDM(LatentDiffusion):
                 log["denoise_row"] = denoise_grid
 
         if unconditional_guidance_scale > 1.0:
-            uc_cross = self.get_unconditional_conditioning(N)
-            uc_cat = c_cat  # torch.zeros_like(c_cat)
-            uc_full = {"c_concat": [uc_cat], "c_crossattn": [uc_cross]}
-            samples_cfg, _ = self.sample_log(cond={"c_concat": [c_cat], "c_crossattn": [c]},
+            uc = self.get_unconditional_conditioning(N, unconditional_guidance_label, image_size=x.shape[-1])
+            # uc_cross = self.get_unconditional_conditioning(N)
+            # uc_cat = c_cat  # torch.zeros_like(c_cat)
+            # uc_full = {"c_concat": [uc_cat], "c_crossattn": [uc_cross]}
+            samples_cfg, _ = self.sample_log(cond=c,
                                              batch_size=N, ddim=use_ddim,
                                              ddim_steps=ddim_steps, eta=ddim_eta,
                                              unconditional_guidance_scale=unconditional_guidance_scale,
-                                             unconditional_conditioning=uc_full,
+                                             unconditional_conditioning=uc,
                                              )
             x_samples_cfg = self.decode_first_stage(samples_cfg)
             log[f"samples_cfg_scale_{unconditional_guidance_scale:.2f}"] = x_samples_cfg
 
         return log
 
-    @torch.no_grad()
-    def sample_log(self, cond, batch_size, ddim, ddim_steps, **kwargs):
-        ddim_sampler = DDIMSampler(self)
-        b, c, h, w = cond["c_concat"][0].shape
-        shape = (self.channels, h // 8, w // 8)
-        samples, intermediates = ddim_sampler.sample(ddim_steps, batch_size, shape, cond, verbose=False, **kwargs)
-        return samples, intermediates
+    # @torch.no_grad()
+    # def sample_log(self, cond, batch_size, ddim, ddim_steps, **kwargs):
+    #     ddim_sampler = DDIMSampler(self)
+    #     b, c, h, w = cond["c_concat"][0].shape
+    #     shape = (self.channels, h // 8, w // 8)
+    #     samples, intermediates = ddim_sampler.sample(ddim_steps, batch_size, shape, cond, verbose=False, **kwargs)
+    #     return samples, intermediates
 
     def configure_optimizers(self):
         lr = self.learning_rate
