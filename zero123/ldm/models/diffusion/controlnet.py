@@ -87,7 +87,7 @@ class ControlLDM(LatentDiffusion):
         return cond
 
     @torch.no_grad()
-    def log_images(self, batch, N=4, n_row=2, sample=False, ddim_steps=50, ddim_eta=0.0, plot_denoise_rows=False, plot_diffusion_rows=False, unconditional_guidance_scale=9.0, unconditional_guidance_label=None):
+    def log_images(self, batch, N=4, n_row=2, sample=False, ddim_steps=50, ddim_eta=0.0, plot_denoise_rows=False, plot_diffusion_rows=False, unconditional_guidance_scale=9.0, unconditional_guidance_label=None, **kwargs):
         use_ddim = ddim_steps is not None
 
         log = dict()
@@ -132,15 +132,16 @@ class ControlLDM(LatentDiffusion):
                 log["denoise_row"] = denoise_grid
 
         if unconditional_guidance_scale > 1.0:
-            uc = self.get_unconditional_conditioning(N, unconditional_guidance_label, image_size=x.shape[-1])
+            # uc = self.get_unconditional_conditioning(N, unconditional_guidance_label, image_size=x.shape[-1])
             # uc_cross = self.get_unconditional_conditioning(N)
-            # uc_cat = c_cat  # torch.zeros_like(c_cat)
-            # uc_full = {"c_concat": [uc_cat], "c_crossattn": [uc_cross]}
+            uc_cross = torch.zeros_like(c["c_crossattn"][0])
+            uc_cat = torch.zeros_like(c["c_concat"][0]) # c_control
+            uc_full = {"c_concat": [uc_cat], "c_crossattn": [uc_cross]}
             samples_cfg, _ = self.sample_log(cond=c,
                                              batch_size=N, ddim=use_ddim,
                                              ddim_steps=ddim_steps, eta=ddim_eta,
                                              unconditional_guidance_scale=unconditional_guidance_scale,
-                                             unconditional_conditioning=uc,
+                                             unconditional_conditioning=uc_full,
                                              )
             x_samples_cfg = self.decode_first_stage(samples_cfg)
             log[f"samples_cfg_scale_{unconditional_guidance_scale:.2f}"] = x_samples_cfg
@@ -161,7 +162,12 @@ class ControlLDM(LatentDiffusion):
         if not self.sd_locked:
             params += list(self.model.diffusion_model.output_blocks.parameters())
             params += list(self.model.diffusion_model.out.parameters())
-        opt = torch.optim.AdamW(params, lr=lr)
+        if self.cc_projection is not None:
+            print('========== optimizing for cc projection weight ==========')
+            opt = torch.optim.AdamW([{"params": params, "lr": lr},
+                                    {"params": self.cc_projection.parameters(), "lr": 10. * lr}], lr=lr)
+        else:
+            opt = torch.optim.AdamW(params, lr=lr)
         return opt
 
     def low_vram_shift(self, is_diffusing):

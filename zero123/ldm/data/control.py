@@ -13,11 +13,11 @@ from einops import rearrange
 
 class ObjaverseData(Dataset):
     def __init__(self,
-        root_dir='/mnt/datassd/seeha/data/3D/train',
+        root_dir='/mnt/datassd/seeha/data/3D/objaverse',
+        txt_path='/mnt/datassd/seeha/3DAnything/zero123/configs/train.txt',
         default_trans=torch.zeros(3),
         return_paths=False,
         total_view=12,
-        validation=False,
         patch_size=256
         ):
         
@@ -36,14 +36,11 @@ class ObjaverseData(Dataset):
         # image_transforms.extend([transforms.ToTensor()])
         self.image_transforms = transforms.Compose(image_transforms)
         
-        with open('/mnt/datassd/seeha/data/3D/paths.txt') as f:
+        # with open('/mnt/datassd/seeha/data/3D/paths.txt') as f:
+        with open(txt_path) as f:
             self.paths = f.read().splitlines()
-        total_objects = len(self.paths)
-        if validation:
-            self.paths = self.paths[math.floor(total_objects / 100. * 99.):] # used last 1% as validation
-        else:
-            self.paths = self.paths[:math.floor(total_objects / 100. * 99.)] # used first 99% as training
-        print('============= length of dataset %d =============' % len(self.paths))
+            
+        # print('============= length of dataset %d =============' % len(self.paths))
         
     def __len__(self):
         return len(self.paths)
@@ -87,9 +84,12 @@ class ObjaverseData(Dataset):
     
     def __getitem__(self, index):
         data = {}
-        total_view = self.total_view
-        index_target, index_cond = random.sample(range(total_view), 2)
         filename = os.path.join(self.root_dir, self.paths[index])
+        view_num = len(os.listdir(f'{filename}/annotation'))
+        total_view = min(self.total_view, view_num)
+        # total_view = self.total_view
+        index_target, index_cond = random.sample(range(total_view), 2)
+        
         
         if self.return_paths:
             data["path"] = str(filename)

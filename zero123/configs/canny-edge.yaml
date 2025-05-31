@@ -82,16 +82,42 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 16
-    num_workers: 16
+    batch_size: 64
+    num_workers: 64
     train:
       target: ldm.data.control.ObjaverseData
       params:
-        total_view: 4
-        validation: False
+        txt_path: '/mnt/datassd/seeha/3DAnything/zero123/configs/train.txt'
     
     validation:
       target: ldm.data.control.ObjaverseData
       params:
-        total_view: 4
-        validation: True
+        txt_path: '/mnt/datassd/seeha/3DAnything/zero123/configs/val.txt'
+
+lightning:
+  callbacks:
+    image_logger:
+      target: main.ImageLogger
+      params:
+        batch_frequency: 100
+        max_images: 16
+        increase_log_steps: False
+        log_first_step: True
+        log_images_kwargs:
+          use_ema_scope: False
+          inpaint: False
+          plot_progressive_rows: False
+          plot_diffusion_rows: False
+          N: 16
+          unconditional_guidance_scale: 3.0
+          unconditional_guidance_label: [""]
+
+  modelcheckpoint:
+    target: pytorch_lightning.callbacks.ModelCheckpoint
+    params:
+      every_n_train_steps: 100
+
+  trainer:
+    benchmark: True
+    max_steps: 2010000
+    check_val_every_n_epoch: 10
