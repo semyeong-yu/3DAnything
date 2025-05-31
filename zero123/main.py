@@ -891,7 +891,7 @@ if __name__ == "__main__":
             model.learning_rate = base_lr
             rank_zero_print("++++ NOT USING LR SCALING ++++")
             rank_zero_print(f"Setting learning rate to {model.learning_rate:.2e}")
-
+        model.sd_locked = True
 
         # allow checkpointing via USR1
         def melk(*args, **kwargs):

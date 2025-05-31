@@ -657,12 +657,12 @@ class LatentDiffusion(DDPM):
 
     def get_learned_conditioning(self, c):
         if self.cond_stage_forward is None:
-            if hasattr(self.cond_stage_model, 'encode') and callable(self.cond_stage_model.encode):
-                c = self.cond_stage_model.encode(c)
-                if isinstance(c, DiagonalGaussianDistribution):
-                    c = c.mode()
-            else:
-                c = self.cond_stage_model(c)
+            # if hasattr(self.cond_stage_model, 'encode') and callable(self.cond_stage_model.encode):
+            #     c = self.cond_stage_model.encode(c)
+            #     if isinstance(c, DiagonalGaussianDistribution):
+            #         c = c.mode()
+            # else:
+            c = self.cond_stage_model(c)
         else:
             assert hasattr(self.cond_stage_model, self.cond_stage_forward)
             c = getattr(self.cond_stage_model, self.cond_stage_forward)(c)
@@ -780,7 +780,8 @@ class LatentDiffusion(DDPM):
 
         # To support classifier-free guidance, randomly drop out only text conditioning 5%, only image conditioning 5%, and both 5%.
         random = torch.rand(x.size(0), device=x.device)
-        prompt_mask = rearrange(random < 2 * uncond, "n -> n 1 1")
+        # prompt_mask = rearrange(random < 2 * uncond, "n -> n 1 1")
+        prompt_mask = rearrange(random < 2 * uncond, "n -> n 1")
         input_mask = 1 - rearrange((random >= uncond).float() * (random < 3 * uncond).float(), "n -> n 1 1 1")
         null_prompt = self.get_learned_conditioning([""])
 
@@ -788,9 +789,11 @@ class LatentDiffusion(DDPM):
         # print('=========== xc shape ===========', xc.shape)
         with torch.enable_grad():
             clip_emb = self.get_learned_conditioning(xc).detach()
-            null_prompt = self.get_learned_conditioning([""]).detach()
-            cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb), T[:, None, :]], dim=-1))]
-        cond["c_concat"] = [input_mask * self.encode_first_stage((xc.to(self.device))).mode().detach()]
+            # null_prompt = self.get_learned_conditioning([""]).detach(
+            null_prompt = torch.zeros_like(clip_emb)
+            cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]
+        # cond["c_concat"] = [input_mask * self.encode_first_stage((xc.to(self.device))).mode().detach()]
+        cond["c_concat"] = [input_mask * xc.to(self.device)]
         out = [z, cond]
         if return_first_stage_outputs:
             xrec = self.decode_first_stage(z)

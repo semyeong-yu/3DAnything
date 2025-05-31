@@ -8,25 +8,33 @@ import random
 import matplotlib.pyplot as plt
 import os
 import math
+from torchvision import transforms
+from einops import rearrange
 
 class ObjaverseData(Dataset):
     def __init__(self,
         root_dir='/mnt/datassd/seeha/data/3D/train',
-        image_transforms=[],
-        ext="png",
         default_trans=torch.zeros(3),
         return_paths=False,
         total_view=12,
-        validation=False
+        validation=False,
+        patch_size=256
         ):
         
         self.root_dir = Path(root_dir)
         self.default_trans = default_trans
         self.return_paths = return_paths
         self.total_view = total_view
-        self.tform = image_transforms
-        if not isinstance(ext, (tuple, list, ListConfig)):
-            ext = [ext]
+        # self.tform = image_transforms
+        self.patch_size = patch_size
+        if self.patch_size > 0:
+            image_transforms = [transforms.Resize(self.patch_size)]
+        else:
+            image_transforms = []
+        image_transforms.extend([transforms.ToTensor(),
+                                transforms.Lambda(lambda x: rearrange(x * 2. - 1., 'c h w -> h w c'))])
+        # image_transforms.extend([transforms.ToTensor()])
+        self.image_transforms = transforms.Compose(image_transforms)
         
         with open('/mnt/datassd/seeha/data/3D/paths.txt') as f:
             self.paths = f.read().splitlines()
@@ -68,7 +76,7 @@ class ObjaverseData(Dataset):
     
     def process_im(self, im):
         im = im.convert("RGB")
-        return self.tform(im)
+        return self.image_transforms(im)
     
     # def load_im(self, path, color):
     def load_im(self, path):
@@ -87,8 +95,8 @@ class ObjaverseData(Dataset):
             data["path"] = str(filename)
             
         color = [1., 1., 1., 1.]
-        target_im = self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target))
-        cond_im = self.load_im(os.path.join(filename, 'cannyedge_render', '%03d.png' % index_cond))
+        target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target)))
+        cond_im = self.process_im(self.load_im(os.path.join(filename, 'cannyedge_render', '%03d.png' % index_cond)))
         # target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target), color))
         # cond_im = self.process_im(self.load_im(os.path.join(filename, '%03d.png' % index_cond), color))
         target_RT = np.load(os.path.join(filename, 'annotation', '%03d.npy' % index_target), allow_pickle=True).item()['matrix_world']
@@ -99,3 +107,4 @@ class ObjaverseData(Dataset):
         data["T"] = self.get_T(target_RT, cond_RT)
 
         return data
+    

@@ -1,4 +1,5 @@
 model:
+  base_learning_rate: 1.0e-05
   target: ldm.models.diffusion.controlnet.ControlLDM
   params:
     linear_start: 0.00085
@@ -22,7 +23,7 @@ model:
       target: ldm.modules.diffusionmodules.controlnetmodel.ControlNet
       params:
         image_size: 32 # unused
-        in_channels: 8
+        in_channels: 4
         hint_channels: 3
         model_channels: 320
         attention_resolutions: [ 4, 2, 1 ]
@@ -39,7 +40,7 @@ model:
       target: ldm.modules.diffusionmodules.controlnetmodel.ControlledUnetModel
       params:
         image_size: 32 # unused
-        in_channels: 8
+        in_channels: 4
         out_channels: 4
         model_channels: 320
         attention_resolutions: [ 4, 2, 1 ]
@@ -76,27 +77,21 @@ model:
           target: torch.nn.Identity
 
     cond_stage_config:
-      target: ldm.modules.encoders.modules.FrozenCLIPEmbedder
+      target: ldm.modules.encoders.modules.FrozenCLIPImageEmbedder
 
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 192
+    batch_size: 16
     num_workers: 16
     train:
       target: ldm.data.control.ObjaverseData
       params:
-        # root_dir: '' #TODO
-        image_transforms: 
-          size: 256
         total_view: 4
         validation: False
     
     validation:
       target: ldm.data.control.ObjaverseData
       params:
-        # root_dir: '' #TODO
-        image_transforms: 
-          size: 256
         total_view: 4
         validation: True
