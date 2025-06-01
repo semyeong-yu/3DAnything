@@ -43,7 +43,7 @@ def disabled_train(self, mode=True):
 def uniform_on_device(r1, r2, shape, device):
     return (r1 - r2) * torch.rand(*shape, device=device) + r2
 
-
+# NOTE: 여기서 lightning module이 정의가 된다.
 class DDPM(pl.LightningModule):
     # classic DDPM with Gaussian diffusion, in image space
     def __init__(self,
@@ -518,7 +518,7 @@ class DDPM(pl.LightningModule):
         opt = torch.optim.AdamW(params, lr=lr)
         return opt
 
-
+# NOTE: original implementation of zero123, 손자 class of pl.LightningModule
 class LatentDiffusion(DDPM):
     """main class"""
     def __init__(self,
@@ -663,6 +663,7 @@ class LatentDiffusion(DDPM):
             #         c = c.mode()
             # else:
             c = self.cond_stage_model(c)
+            # 아마 여기를 수정된듯 branch sh
         else:
             assert hasattr(self.cond_stage_model, self.cond_stage_forward)
             c = getattr(self.cond_stage_model, self.cond_stage_forward)(c)
@@ -762,18 +763,26 @@ class LatentDiffusion(DDPM):
     def get_input(self, batch, k, return_first_stage_outputs=False,
                   cond_key=None, return_original_cond=False, bs=None, uncond=0.05):
         # c_concat -> img / c_crossattn -> text (generated from image) + pose
+        
+        # 여기 분석하기
         x = super().get_input(batch, k)
+        # TODO 보다보니 T로 conditioning을 하는 부분이 없는데?
         T = batch['T'].to(memory_format=torch.contiguous_format).float()
         
         if bs is not None:
             x = x[:bs]
             T = T[:bs].to(self.device)
 
-        x = x.to(self.device)
+        x = x.to(self.device)  # device transfer
         encoder_posterior = self.encode_first_stage(x)
+        # auto encoder로 embedding
         z = self.get_first_stage_encoding(encoder_posterior).detach()
+        # encoder_posterior를 diffusion noising을 해버림
+        # NOTE z는 latent model에 넣어주기 위한 embedding, VAE에 의해서 encoding 됨
+        
         cond_key = cond_key or self.cond_stage_key
         xc = super().get_input(batch, cond_key).to(self.device)
+        # xc 어떻게 construct 되는가?
         if bs is not None:
             xc = xc[:bs]
         cond = {}
@@ -788,18 +797,22 @@ class LatentDiffusion(DDPM):
         # z.shape: [8, 4, 64, 64]; c.shape: [8, 1, 768]
         # print('=========== xc shape ===========', xc.shape)
         with torch.enable_grad():
+            # NOTE 여기 clip embedding이 text 기반인지 image 기반 인지 알아야함, 역시 image 기반이였다. (image -> latent)
             clip_emb = self.get_learned_conditioning(xc).detach()
             # null_prompt = self.get_learned_conditioning([""]).detach(
             null_prompt = torch.zeros_like(clip_emb)
             cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]
+            # NOTE 악 ㅋㅋㅋ 여기에 T가 떡하니 있다. OK
         # cond["c_concat"] = [input_mask * self.encode_first_stage((xc.to(self.device))).mode().detach()]
         cond["c_concat"] = [input_mask * xc.to(self.device)]
         out = [z, cond]
+        
         if return_first_stage_outputs:
             xrec = self.decode_first_stage(z)
             out.extend([x, xrec])
         if return_original_cond:
             out.append(xc)
+            
         return out
 
     # @torch.no_grad()
@@ -1047,7 +1060,9 @@ class LatentDiffusion(DDPM):
     def p_losses(self, x_start, cond, t, noise=None):
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
+        
         model_output = self.apply_model(x_noisy, t, cond)
+        # NOTE 여기가 중요함, 증손자 class에서 overriding 함
 
         loss_dict = {}
         prefix = 'train' if self.training else 'val'
@@ -1079,6 +1094,7 @@ class LatentDiffusion(DDPM):
 
         return loss, loss_dict
 
+    # NOTE 여기가 generation할 때 쓰이는 것으로 보인다.
     def p_mean_variance(self, x, c, t, clip_denoised: bool, return_codebook_ids=False, quantize_denoised=False,
                         return_x0=False, score_corrector=None, corrector_kwargs=None):
         t_in = t

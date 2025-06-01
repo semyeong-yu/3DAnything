@@ -9,8 +9,14 @@ from ldm.models.diffusion.ddpm import LatentDiffusion
 from ldm.util import log_txt_as_img, exists, instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
 
+# NOTE conrolNET variant
+# 증손자 class
 class ControlLDM(LatentDiffusion):
-
+    """
+    1. DDPM model을 추가함
+        a. 이는 zero123랑 비슷한 implementation을 보임 
+    2. controlnet을 추가함
+    """
     def __init__(self, control_stage_config, control_key, only_mid_control, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.control_model = instantiate_from_config(control_stage_config)
@@ -38,7 +44,7 @@ class ControlLDM(LatentDiffusion):
             out.extend([inputs[2], inputs[3]])
         if return_original_cond:
             out.append(inputs[4])
-        return out
+        return out  # 여기 override해버렸다.
         # return x, dict(c_crossattn=[c], c_concat=[control])
 
     def apply_model(self, x_noisy, t, cond, *args, **kwargs):
@@ -46,7 +52,8 @@ class ControlLDM(LatentDiffusion):
         diffusion_model = self.model.diffusion_model # free from wrapper
 
         cond_txt = torch.cat(cond['c_crossattn'], 1)
-
+        # NOTE 여기 error image를 clip으로 embedding하는 것이지, text 정보와 camera location 정보가 주입되지 못함
+        
         # if cond['c_concat'] is None:
         #     eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=None, only_mid_control=self.only_mid_control)
         # else:
@@ -54,6 +61,7 @@ class ControlLDM(LatentDiffusion):
         #     control = [c * scale for c, scale in zip(control, self.control_scales)]
         #     eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
         # control = self.control_model(x=torch.cat([x_noisy] + cond['c_concat'], dim=1), hint=torch.cat(cond['c_control'], 1), timesteps=t, context=cond_txt)
+        # NOTE 여기서 control signal을 넣어준다.
         control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
         control = [c * scale for c, scale in zip(control, self.control_scales)]
         # eps = diffusion_model(x=torch.cat([x_noisy] + cond['c_concat'], dim=1), timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
@@ -65,6 +73,7 @@ class ControlLDM(LatentDiffusion):
     # def get_unconditional_conditioning(self, N):
     #     return self.get_learned_conditioning([""] * N)
     @torch.no_grad()
+    # TODO: non-referenced function
     def get_unconditional_conditioning(self, batch_size, null_label=None, image_size=512):
         if null_label is not None:
             xc = null_label

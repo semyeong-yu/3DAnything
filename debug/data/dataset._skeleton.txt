@@ -1,0 +1,53 @@
+root@780e6d008244:/workspace/data/3ddst/train/n01440764/09f07baa8fa9496994aef0693ac7bec8# tree
+.
+|-- annotation
+|   |-- 000.npy
+|   |-- 001.npy
+|   |-- 002.npy
+|   |-- 003.npy
+|   |-- 004.npy
+|   |-- 005.npy
+|   |-- 006.npy
+|   |-- 007.npy
+|   `-- 008.npy
+|-- cannyedge_render
+|   |-- 000.png
+|   |-- 001.png
+|   |-- 002.png
+|   |-- 003.png
+|   |-- 004.png
+|   |-- 005.png
+|   |-- 006.png
+|   |-- 007.png
+|   `-- 008.png
+|-- depth
+|   |-- 000.exr
+|   |-- 001.exr
+|   |-- 002.exr
+|   |-- 003.exr
+|   |-- 004.exr
+|   |-- 005.exr
+|   |-- 006.exr
+|   |-- 007.exr
+|   `-- 008.exr
+|-- image_diffusion
+|-- image_render
+|   |-- 000.png
+|   |-- 001.png
+|   |-- 002.png
+|   |-- 003.png
+|   |-- 004.png
+|   |-- 005.png
+|   |-- 006.png
+|   |-- 007.png
+|   `-- 008.png
+`-- normal_render
+    |-- 000.png
+    |-- 001.png
+    |-- 002.png
+    |-- 003.png
+    |-- 004.png
+    |-- 005.png
+    |-- 006.png
+    |-- 007.png
+    `-- 008.png

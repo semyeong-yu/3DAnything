@@ -146,7 +146,7 @@ def count_params(model, verbose=False):
         print(f"{model.__class__.__name__} has {total_params*1.e-6:.2f} M params.")
     return total_params
 
-
+# NOTE 여기에서 model이랑 weight instantiate
 def instantiate_from_config(config):
     if not "target" in config:
         if config == '__is_first_stage__':

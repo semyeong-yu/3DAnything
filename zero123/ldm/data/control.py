@@ -11,6 +11,7 @@ import math
 from torchvision import transforms
 from einops import rearrange
 
+# NOTE: 여기가 현재 사용하는 data의 정의 부분
 class ObjaverseData(Dataset):
     def __init__(self,
         root_dir='/mnt/datassd/seeha/data/3D/objaverse',
@@ -54,6 +55,10 @@ class ObjaverseData(Dataset):
         azimuth = np.arctan2(xyz[:,1], xyz[:,0])
         return np.array([theta, azimuth, z])
     
+    # TODO: coordinate가 적절한가?
+    # 카메라의 view direction에 대한 정보가 소실되는 느낌인데 괜찮으려나, 원본 zero123 paper에서 확인한 바로는 괜찮다.
+    # 현재의 pipeline이 blender cam의 위치 정보에 대해서 받게 되고, camera를 object를 기준으로 spherical coordinate로 투영하는 방식인데, 이에 correspond하게 변환을 하므로 일단은 적절하다.
+    # 이거 실제 coordinate 상에서 plot을 해봐야 겠다.
     def get_T(self, target_RT, cond_RT):
         R, T = target_RT[:3, :3], target_RT[:3, -1]
         T_target = -R.T @ T
@@ -82,6 +87,8 @@ class ObjaverseData(Dataset):
         img = Image.fromarray(np.uint8(img[:,:,:3]*255.))
         return img
     
+    # TODO: 다만, 현재로는 입력으로 사용되는 정보가 data["image_cond"]이거 하나인데, 이게 실은 canny edge이다. 그러면 걱정되는 점은 원래 controlnet 입력으로 사용되는 정보는 T2I에 spatial information이 있는 control signal을 넣는 것인데, 현재의 형태로는 사실상 zero123의 finetune에 불과한 상황이다.
+
     def __getitem__(self, index):
         data = {}
         filename = os.path.join(self.root_dir, self.paths[index])
@@ -96,6 +103,7 @@ class ObjaverseData(Dataset):
             
         color = [1., 1., 1., 1.]
         target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target)))
+        # 아마 바꾼다면 이부분에서 conditioning을 약간 바꾸면 될 것이다.
         cond_im = self.process_im(self.load_im(os.path.join(filename, 'cannyedge_render', '%03d.png' % index_cond)))
         # target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target), color))
         # cond_im = self.process_im(self.load_im(os.path.join(filename, '%03d.png' % index_cond), color))
@@ -103,6 +111,8 @@ class ObjaverseData(Dataset):
         cond_RT = np.load(os.path.join(filename, 'annotation', '%03d.npy' % index_cond), allow_pickle=True).item()['matrix_world']
 
         data["image_target"] = target_im
+
+        # 현재는 conditional image를 통해서
         data["image_cond"] = cond_im
         data["T"] = self.get_T(target_RT, cond_RT)
 

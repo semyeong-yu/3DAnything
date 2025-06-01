@@ -1,3 +1,4 @@
+# NOTE 여기 까기
 model:
   base_learning_rate: 1.0e-05
   target: ldm.models.diffusion.controlnet.ControlLDM
@@ -7,9 +8,9 @@ model:
     num_timesteps_cond: 1
     log_every_t: 200
     timesteps: 1000
-    first_stage_key: "image_target"
-    cond_stage_key: "image_cond"
-    control_key: "canny"
+    first_stage_key: "image_target"  # 이거 살짝
+    cond_stage_key: "image_cond"  # 여기
+    control_key: "canny"  # 여기
     image_size: 32
     channels: 4
     cond_stage_trainable: false
@@ -20,6 +21,7 @@ model:
     only_mid_control: False
 
     control_stage_config:
+      # NOTE: 이거 cotnrolnet 까기
       target: ldm.modules.diffusionmodules.controlnetmodel.ControlNet
       params:
         image_size: 32 # unused
@@ -37,6 +39,7 @@ model:
         legacy: False
 
     unet_config:
+      # NOTE: 이거 unet 까기
       target: ldm.modules.diffusionmodules.controlnetmodel.ControlledUnetModel
       params:
         image_size: 32 # unused
@@ -54,6 +57,7 @@ model:
         legacy: False
 
     first_stage_config:
+      # NOTE: 이거 VAE 까기
       target: ldm.models.autoencoder.AutoencoderKL
       params:
         embed_dim: 4
@@ -79,6 +83,7 @@ model:
     cond_stage_config:
       target: ldm.modules.encoders.modules.FrozenCLIPImageEmbedder
 
+# NOTE 여기 까기
 data:
   target: main.DataModuleFromConfig
   params:
@@ -87,11 +92,13 @@ data:
     train:
       target: ldm.data.control.ObjaverseData
       params:
+        root_dir: '/mnt/datassd/seeha/data/3D/objaverse'
         txt_path: '/mnt/datassd/seeha/3DAnything/zero123/configs/train.txt'
     
     validation:
       target: ldm.data.control.ObjaverseData
       params:
+        root_dir: '/mnt/datassd/seeha/data/3D/objaverse'
         txt_path: '/mnt/datassd/seeha/3DAnything/zero123/configs/val.txt'
 
 lightning:
