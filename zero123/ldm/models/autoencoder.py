@@ -321,6 +321,7 @@ class AutoencoderKL(pl.LightningModule):
         self.load_state_dict(sd, strict=False)
         print(f"Restored from {path}")
 
+    # NOTE: 여기서 어떻게 dimension reduction을 하는 지 확인하기
     def encode(self, x):
         h = self.encoder(x)
         moments = self.quant_conv(h)
@@ -332,6 +333,7 @@ class AutoencoderKL(pl.LightningModule):
         dec = self.decoder(z)
         return dec
 
+    # NOTE: 여기서 어떻게 dimension reduction을 하는 지 확인하기
     def forward(self, input, sample_posterior=True):
         posterior = self.encode(input)
         if sample_posterior:

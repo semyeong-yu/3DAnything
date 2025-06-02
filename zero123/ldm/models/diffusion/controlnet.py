@@ -20,58 +20,49 @@ class ControlLDM(LatentDiffusion):
     def __init__(self, control_stage_config, control_key, only_mid_control, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.control_model = instantiate_from_config(control_stage_config)
+        # 이 부분을 개조 하면 될 것으로 보인다.
         self.control_key = control_key
         self.only_mid_control = only_mid_control
         self.control_scales = [1.0] * 13
+        # TODO 현재 보기에는 control_scales이 다 똑같은데 spatial resolution별로 다르게 조절하는 것이 좋을 것이다.
 
     @torch.no_grad()
-    # def get_input(self, batch, k, bs=None, *args, **kwargs):
     def get_input(self, batch, k, return_first_stage_outputs=False, cond_key=None, return_original_cond=False, bs=None, uncond=0.05):
-        # x, c = super().get_input(batch, self.first_stage_key, *args, **kwargs) # c : {c_concat : pimg], c_crossattn : [text + pose]}
         inputs = super().get_input(batch, k, return_first_stage_outputs, cond_key, return_original_cond, bs, uncond) # c : {c_concat : pimg], c_crossattn : [text + pose]}
         z = inputs[0]
         c = inputs[1]
-        # control = c['c_concat']
-        # control = batch[self.control_key]
-        # if bs is not None:
-        #     control = control[:bs]
-        # control = control.to(self.device)
-        # control = einops.rearrange(control, 'b h w c -> b c h w')
-        # control = control.to(memory_format=torch.contiguous_format).float()
-        # c["c_control"] = [control]
         out = [z, c]
         if return_first_stage_outputs:
             out.extend([inputs[2], inputs[3]])
         if return_original_cond:
             out.append(inputs[4])
         return out  # 여기 override해버렸다.
-        # return x, dict(c_crossattn=[c], c_concat=[control])
 
+    # NOTE 여기에서 두 종의 control signal을 넣어주도록 한다.
     def apply_model(self, x_noisy, t, cond, *args, **kwargs):
         assert isinstance(cond, dict)
         diffusion_model = self.model.diffusion_model # free from wrapper
 
+        # control of langauge
+        # c_crossattn이 어떻게 construct 되는 지 확인 필요
         cond_txt = torch.cat(cond['c_crossattn'], 1)
-        # NOTE 여기 error image를 clip으로 embedding하는 것이지, text 정보와 camera location 정보가 주입되지 못함
-        
-        # if cond['c_concat'] is None:
-        #     eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=None, only_mid_control=self.only_mid_control)
-        # else:
-        #     control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
-        #     control = [c * scale for c, scale in zip(control, self.control_scales)]
-        #     eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
-        # control = self.control_model(x=torch.cat([x_noisy] + cond['c_concat'], dim=1), hint=torch.cat(cond['c_control'], 1), timesteps=t, context=cond_txt)
-        # NOTE 여기서 control signal을 넣어준다.
+
+        # control of edge
+        # c_concat이 어떻게 construct 되는 지 확인 필요
         control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
+        
+        # control of pose + langauge
+                
         control = [c * scale for c, scale in zip(control, self.control_scales)]
         # eps = diffusion_model(x=torch.cat([x_noisy] + cond['c_concat'], dim=1), timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
+        
+        import ipdb; ipdb.set_trace()
+        
+        # control signal added 
         eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
 
         return eps
 
-    # @torch.no_grad()
-    # def get_unconditional_conditioning(self, N):
-    #     return self.get_learned_conditioning([""] * N)
     @torch.no_grad()
     # TODO: non-referenced function
     def get_unconditional_conditioning(self, batch_size, null_label=None, image_size=512):
@@ -102,17 +93,14 @@ class ControlLDM(LatentDiffusion):
         log = dict()
         z, c, x, xrec, xc = self.get_input(batch, self.first_stage_key, return_first_stage_outputs=True, return_original_cond=True, bs=N)
         N = min(z.shape[0], N)
-        # c_control = c["c_control"][0][:N]
         c_control = c["c_concat"][0][:N]
         n_row = min(x.shape[0], n_row)
         log["inputs"] = x
         log["reconstruction"] = xrec
         log["control"] = c_control
         
-        # log["conditioning"] = log_txt_as_img((512, 512), batch[self.cond_stage_key], size=16)
         
         if plot_diffusion_rows:
-            # get diffusion row
             diffusion_row = list()
             z_start = z[:n_row]
             for t in range(self.num_timesteps):
@@ -130,7 +118,6 @@ class ControlLDM(LatentDiffusion):
             log["diffusion_row"] = diffusion_grid
 
         if sample:
-            # get denoise row
             samples, z_denoise_row = self.sample_log(cond=c,
                                                      batch_size=N, ddim=use_ddim,
                                                      ddim_steps=ddim_steps, eta=ddim_eta)
@@ -141,8 +128,6 @@ class ControlLDM(LatentDiffusion):
                 log["denoise_row"] = denoise_grid
 
         if unconditional_guidance_scale > 1.0:
-            # uc = self.get_unconditional_conditioning(N, unconditional_guidance_label, image_size=x.shape[-1])
-            # uc_cross = self.get_unconditional_conditioning(N)
             uc_cross = torch.zeros_like(c["c_crossattn"][0])
             uc_cat = torch.zeros_like(c["c_concat"][0]) # c_control
             uc_full = {"c_concat": [uc_cat], "c_crossattn": [uc_cross]}
@@ -157,15 +142,19 @@ class ControlLDM(LatentDiffusion):
 
         return log
 
-    # @torch.no_grad()
-    # def sample_log(self, cond, batch_size, ddim, ddim_steps, **kwargs):
-    #     ddim_sampler = DDIMSampler(self)
-    #     b, c, h, w = cond["c_concat"][0].shape
-    #     shape = (self.channels, h // 8, w // 8)
-    #     samples, intermediates = ddim_sampler.sample(ddim_steps, batch_size, shape, cond, verbose=False, **kwargs)
-    #     return samples, intermediates
-
     def configure_optimizers(self):
+        """
+        여기가 핵심이다.
+        1. 오직 controlnet의 parameter만을 update를 해야한다.
+        
+        model.first_stage_model: FREEZE
+        model.model.diffusion_model: FREEZE
+        model.cond_stage_model: FREEZE
+        
+        model.control_model: learnable
+        나는 control signal을 한번에 두개에서 부여 해야 한다.
+        
+        """
         lr = self.learning_rate
         params = list(self.control_model.parameters())
         if not self.sd_locked:

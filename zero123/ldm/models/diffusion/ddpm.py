@@ -17,7 +17,8 @@ from functools import partial
 import itertools
 from tqdm import tqdm
 from torchvision.utils import make_grid
-from pytorch_lightning.utilities.distributed import rank_zero_only
+# from pytorch_lightning.utilities.distributed import rank_zero_only
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from omegaconf import ListConfig
 
 from ldm.util import log_txt_as_img, exists, default, ismap, isimage, mean_flat, count_params, instantiate_from_config
@@ -91,6 +92,7 @@ class DDPM(pl.LightningModule):
         self.channels = channels
         self.use_positional_encodings = use_positional_encodings
         self.model = DiffusionWrapper(unet_config, conditioning_key)
+        # 여기가 LDM 
         count_params(self.model, verbose=True)
         self.use_ema = use_ema
         if self.use_ema:
@@ -775,8 +777,10 @@ class LatentDiffusion(DDPM):
 
         x = x.to(self.device)  # device transfer
         encoder_posterior = self.encode_first_stage(x)
-        # auto encoder로 embedding
+        # NOTE auto encoder로 embedding
+        
         z = self.get_first_stage_encoding(encoder_posterior).detach()
+        # NOTE noise injection
         # encoder_posterior를 diffusion noising을 해버림
         # NOTE z는 latent model에 넣어주기 위한 embedding, VAE에 의해서 encoding 됨
         
@@ -799,7 +803,6 @@ class LatentDiffusion(DDPM):
         with torch.enable_grad():
             # NOTE 여기 clip embedding이 text 기반인지 image 기반 인지 알아야함, 역시 image 기반이였다. (image -> latent)
             clip_emb = self.get_learned_conditioning(xc).detach()
-            # null_prompt = self.get_learned_conditioning([""]).detach(
             null_prompt = torch.zeros_like(clip_emb)
             cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]
             # NOTE 악 ㅋㅋㅋ 여기에 T가 떡하니 있다. OK

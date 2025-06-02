@@ -277,6 +277,14 @@ class ControlNet(nn.Module):
         return TimestepEmbedSequential(zero_module(conv_nd(self.dims, channels, channels, 1, padding=0)))
 
     def forward(self, x, hint, timesteps, context, **kwargs):
+        """
+        x: latent noise
+        hint: canny edge와 같은 spatial control signal을 의미한다.
+        timesteps: time embedding
+        context: text embeding을 의미한다. 
+        
+        """
+        
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)
 
@@ -284,7 +292,7 @@ class ControlNet(nn.Module):
 
         outs = []
 
-        h = x.type(self.dtype)
+        h = x.type(self.dtype)  # tensor type casting
         for module, zero_conv in zip(self.input_blocks, self.zero_convs):
             if guided_hint is not None:
                 h = module(h, emb, context)

@@ -340,6 +340,7 @@ class ProjectedFrozenCLIPEmbedder(AbstractEncoder):
     def encode(self, text):
         return self(text)
 
+# current implementation of zero123
 class FrozenCLIPImageEmbedder(AbstractEncoder):
     """
         Uses the CLIP image encoder.

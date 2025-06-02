@@ -31,7 +31,7 @@ def get_node_name(name, parent_name):
     return True, name[len(parent_name):]
 
 
-model = create_model(config_path='/mnt/datassd/seeha/3DAnything/zero123/configs/canny-edge.yaml')
+model = create_model(config_path='./configs/canny-edge.yaml')
 
 pretrained_weights = torch.load(input_path)
 if 'state_dict' in pretrained_weights:
