@@ -100,26 +100,29 @@ class ObjaverseData(Dataset):
     def __getitem__(self, index):
         data = {}
         filename = os.path.join(self.root_dir, self.paths[index])
-        view_num = len(os.listdir(f'{filename}/annotation'))
-        total_view = min(self.total_view, view_num)
-        # total_view = self.total_view
-        index_target, index_cond = random.sample(range(total_view), 2)
+        # view_num = len(os.listdir(f'{filename}/image_render')) # 이렇게 하면 안될 듯, dataframe에서 긁는게 더 나을 것이다.
         
+        meta_class_name = filename.split('/')[-2]
+        class_name = filename.split('/')[-1]
+        base_name_list = self.caption[(self.caption["meta_class"] == meta_class_name) & (self.caption["class"] == class_name)]["base_name"].values
+        index_target, index_cond = np.random.choice(base_name_list, size=2, replace=False)
+        index_target = index_target.split('.')[0]
+        index_cond = index_cond.split('.')[0]
         
         if self.return_paths:
             data["path"] = str(filename)
             
         color = [1., 1., 1., 1.]
-        target_img_path = os.path.join(filename, 'image_render', '%03d.png' % index_target)
+        target_img_path = os.path.join(filename, 'image_render', index_target + '.png')
         target_im = self.process_im(self.load_im(target_img_path))
         
         # 아마 바꾼다면 이부분에서 conditioning을 약간 바꾸면 될 것이다.
         
-        cond_im = self.process_im(self.load_im(os.path.join(filename, 'cannyedge_render', '%03d.png' % index_cond)))
+        cond_im = self.process_im(self.load_im(os.path.join(filename, 'cannyedge_render', index_target + '.png')))
         # target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target), color))
         # cond_im = self.process_im(self.load_im(os.path.join(filename, '%03d.png' % index_cond), color))
-        target_RT = np.load(os.path.join(filename, 'annotation', '%03d.npy' % index_target), allow_pickle=True).item()['matrix_world']
-        cond_RT = np.load(os.path.join(filename, 'annotation', '%03d.npy' % index_cond), allow_pickle=True).item()['matrix_world']
+        target_RT = np.load(os.path.join(filename, 'annotation', index_target + ".npy"), allow_pickle=True).item()['matrix_world']
+        cond_RT = np.load(os.path.join(filename, 'annotation', index_cond + ".npy"), allow_pickle=True).item()['matrix_world']
 
         data["image_target"] = target_im
 
