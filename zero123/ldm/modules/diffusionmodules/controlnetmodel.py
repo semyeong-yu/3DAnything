@@ -70,6 +70,7 @@ class ControlNet(nn.Module):
             num_attention_blocks=None,
             disable_middle_self_attn=False,
             use_linear_in_transformer=False,
+            spatial_control=True,
     ):
         super().__init__()
         if use_spatial_transformer:
@@ -122,6 +123,8 @@ class ControlNet(nn.Module):
         self.num_head_channels = num_head_channels
         self.num_heads_upsample = num_heads_upsample
         self.predict_codebook_ids = n_embed is not None
+        
+        self.spatial_control = spatial_control  # use spatial control signal or not
 
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
@@ -138,24 +141,33 @@ class ControlNet(nn.Module):
             ]
         )
         self.zero_convs = nn.ModuleList([self.make_zero_conv(model_channels)])
-
-        self.input_hint_block = TimestepEmbedSequential(
-            conv_nd(dims, hint_channels, 16, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(dims, 16, 16, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(dims, 16, 32, 3, padding=1, stride=2),
-            nn.SiLU(),
-            conv_nd(dims, 32, 32, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(dims, 32, 96, 3, padding=1, stride=2),
-            nn.SiLU(),
-            conv_nd(dims, 96, 96, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(dims, 96, 256, 3, padding=1, stride=2),
-            nn.SiLU(),
-            zero_module(conv_nd(dims, 256, model_channels, 3, padding=1))
-        )
+        # 이 부분을 zero initialize해버리면 처음의 well trained latent representation을 망가트리지 않을 수 있을 것이다.
+        
+        # NOTE: control image signal을 latent로 mapping하는 simple CNN block이다.
+        
+        if self.spatial_control:
+            self.input_hint_block = TimestepEmbedSequential(
+                conv_nd(dims, hint_channels, 16, 3, padding=1),
+                nn.SiLU(),
+                conv_nd(dims, 16, 16, 3, padding=1),
+                nn.SiLU(),
+                
+                conv_nd(dims, 16, 32, 3, padding=1, stride=2),
+                nn.SiLU(),
+                conv_nd(dims, 32, 32, 3, padding=1),
+                nn.SiLU(),
+                
+                conv_nd(dims, 32, 96, 3, padding=1, stride=2),
+                nn.SiLU(),
+                conv_nd(dims, 96, 96, 3, padding=1),
+                nn.SiLU(),
+                
+                conv_nd(dims, 96, 256, 3, padding=1, stride=2),
+                nn.SiLU(),
+                
+                zero_module(conv_nd(dims, 256, model_channels, 3, padding=1))
+            )
+            
 
         self._feature_size = model_channels
         input_block_chans = [model_channels]
@@ -230,6 +242,7 @@ class ControlNet(nn.Module):
                 ch = out_ch
                 input_block_chans.append(ch)
                 self.zero_convs.append(self.make_zero_conv(ch))
+                # TODO dimension 확인을 해야 한다.
                 ds *= 2
                 self._feature_size += ch
 
@@ -282,14 +295,17 @@ class ControlNet(nn.Module):
         hint: canny edge와 같은 spatial control signal을 의미한다.
         timesteps: time embedding
         context: text embeding을 의미한다. 
-        
         """
         
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)
-
-        guided_hint = self.input_hint_block(hint, emb, context)
-
+        
+        # TODO 이 부분 살짝만 개조하면 충분할 듯 하다.
+        if self.spatial_control:
+            guided_hint = self.input_hint_block(hint, emb, context)
+        else:
+            guided_hint = None
+        
         outs = []
 
         h = x.type(self.dtype)  # tensor type casting
@@ -305,4 +321,4 @@ class ControlNet(nn.Module):
         h = self.middle_block(h, emb, context)
         outs.append(self.middle_block_out(h, emb, context))
 
-        return outs
+        return outs 

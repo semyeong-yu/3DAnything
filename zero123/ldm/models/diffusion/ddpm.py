@@ -665,6 +665,7 @@ class LatentDiffusion(DDPM):
             #         c = c.mode()
             # else:
             c = self.cond_stage_model(c)
+            # 그러면 text embedding은 잘 encoding은 되는 것으로 봉니다.
             # 아마 여기를 수정된듯 branch sh
         else:
             assert hasattr(self.cond_stage_model, self.cond_stage_forward)
@@ -785,6 +786,8 @@ class LatentDiffusion(DDPM):
         # NOTE z는 latent model에 넣어주기 위한 embedding, VAE에 의해서 encoding 됨
         
         cond_key = cond_key or self.cond_stage_key
+        # TODO dataloader 수정 필요
+        
         xc = super().get_input(batch, cond_key).to(self.device)
         # xc 어떻게 construct 되는가?
         if bs is not None:
@@ -796,18 +799,27 @@ class LatentDiffusion(DDPM):
         # prompt_mask = rearrange(random < 2 * uncond, "n -> n 1 1")
         prompt_mask = rearrange(random < 2 * uncond, "n -> n 1")
         input_mask = 1 - rearrange((random >= uncond).float() * (random < 3 * uncond).float(), "n -> n 1 1 1")
-        null_prompt = self.get_learned_conditioning([""])
+        
+        null_prompt = self.get_learned_conditioning([""])  # text embedding을 사용하기 때문에 이게 맞아유
 
         # z.shape: [8, 4, 64, 64]; c.shape: [8, 1, 768]
         # print('=========== xc shape ===========', xc.shape)
         with torch.enable_grad():
             # NOTE 여기 clip embedding이 text 기반인지 image 기반 인지 알아야함, 역시 image 기반이였다. (image -> latent)
             clip_emb = self.get_learned_conditioning(xc).detach()
-            null_prompt = torch.zeros_like(clip_emb)
-            cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]
-            # NOTE 악 ㅋㅋㅋ 여기에 T가 떡하니 있다. OK
+            # null_prompt = torch.zeros_like(clip_emb)
+            
+            # cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]
+            cond["c_text"] = torch.where(prompt_mask, null_prompt, clip_emb)
+            
+            cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]  # explicitly for zero123 control net
+            
+            cond[]
+            
+            
         # cond["c_concat"] = [input_mask * self.encode_first_stage((xc.to(self.device))).mode().detach()]
-        cond["c_concat"] = [input_mask * xc.to(self.device)]
+        # cond["c_concat"] = [input_mask * xc.to(self.device)]
+        # 이거의 차이점이 어떻게 되는가?
         out = [z, cond]
         
         if return_first_stage_outputs:
@@ -1398,6 +1410,7 @@ class LatentDiffusion(DDPM):
                 log["samples_x0_quantized"] = x_samples
 
         if unconditional_guidance_scale > 1.0:
+            # TODO 여기도 까볼 필요가 있다.
             uc = self.get_unconditional_conditioning(N, unconditional_guidance_label, image_size=x.shape[-1])
             # uc = torch.zeros_like(c)
             with ema_scope("Sampling with classifier-free guidance"):
@@ -1507,7 +1520,11 @@ class DiffusionWrapper(pl.LightningModule):
         self.diffusion_model = instantiate_from_config(diff_model_config)
         self.conditioning_key = conditioning_key
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm', 'hybrid-adm']
-
+        # c_concat
+        # c_crossattn
+        # 각각의 요소들이 어떻게 encoding되는 지에 대해서 확인할 필요가 있음
+        
+    # TODO: 여기 분석할 필요가 있음
     def forward(self, x, t, c_concat: list = None, c_crossattn: list = None, c_adm=None):
         if self.conditioning_key is None:
             out = self.diffusion_model(x, t)
@@ -1520,6 +1537,7 @@ class DiffusionWrapper(pl.LightningModule):
             cc = torch.cat(c_crossattn, 1)
             out = self.diffusion_model(x, t, context=cc)
         elif self.conditioning_key == 'hybrid':
+            # TODO
             xc = torch.cat([x] + c_concat, dim=1)
             cc = torch.cat(c_crossattn, 1)
             out = self.diffusion_model(xc, t, context=cc)
