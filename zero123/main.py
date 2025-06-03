@@ -360,7 +360,7 @@ class ImageLogger(Callback):
         self.batch_freq = batch_frequency
         self.max_images = max_images
         self.logger_log_images = {
-            pl.loggers.TestTubeLogger: self._testtube,
+            pl.loggers.TensorBoardLogger: self._tensorboard,
         }
         self.log_steps = [
             2 ** n for n in range(int(np.log2(self.batch_freq)) + 1)]
@@ -374,16 +374,14 @@ class ImageLogger(Callback):
         self.log_all_val = log_all_val
 
     @rank_zero_only
-    def _testtube(self, pl_module, images, batch_idx, split):
+    def _tensorboard(self, pl_module, images, batch_idx, split):
         for k in images:
             grid = torchvision.utils.make_grid(images[k])
-            grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
-
+            grid = (grid + 1.0) / 2.0
             tag = f"{split}/{k}"
             pl_module.logger.experiment.add_image(
-                tag, grid,
-                global_step=pl_module.global_step)
-
+                tag, grid, global_step=pl_module.global_step
+            )
     @rank_zero_only
     def log_local(self, save_dir, split, images,
                   global_step, current_epoch, batch_idx):
@@ -453,40 +451,17 @@ class ImageLogger(Callback):
             return True
         return False
 
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if not self.disabled and (pl_module.global_step > 0 or self.log_first_step):
             self.log_img(pl_module, batch, batch_idx, split="train")
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if not self.disabled and pl_module.global_step > 0:
             self.log_img(pl_module, batch, batch_idx, split="val")
         if hasattr(pl_module, 'calibrate_grad_norm'):
             if (pl_module.calibrate_grad_norm and batch_idx % 25 == 0) and batch_idx > 0:
                 self.log_gradients(trainer, pl_module, batch_idx=batch_idx)
 
-
-class CUDACallback(Callback):
-    # see https://github.com/SeanNaren/minGPT/blob/master/mingpt/callback.py
-    def on_train_epoch_start(self, trainer, pl_module):
-        # Reset the memory use counter
-        torch.cuda.reset_peak_memory_stats(trainer.root_gpu)
-        torch.cuda.synchronize(trainer.root_gpu)
-        self.start_time = time.time()
-
-    def on_train_epoch_end(self, trainer, pl_module, outputs):
-        torch.cuda.synchronize(trainer.root_gpu)
-        max_memory = torch.cuda.max_memory_allocated(
-            trainer.root_gpu) / 2 ** 20
-        epoch_time = time.time() - self.start_time
-
-        try:
-            max_memory = trainer.training_type_plugin.reduce(max_memory)
-            epoch_time = trainer.training_type_plugin.reduce(epoch_time)
-
-            rank_zero_info(f"Average Epoch time: {epoch_time:.2f} seconds")
-            rank_zero_info(f"Average Peak memory {max_memory:.2f}MiB")
-        except AttributeError:
-            pass
 
 
 class SingleImageLogger(Callback):
@@ -500,7 +475,7 @@ class SingleImageLogger(Callback):
         self.batch_freq = batch_frequency
         self.max_images = max_images
         self.logger_log_images = {
-            pl.loggers.TestTubeLogger: self._testtube,
+            pl.loggers.TensorBoardLogger: self._tensorboard,
         }
         self.log_steps = [
             2 ** n for n in range(int(np.log2(self.batch_freq)) + 1)]
@@ -514,15 +489,14 @@ class SingleImageLogger(Callback):
         self.log_always = log_always
 
     @rank_zero_only
-    def _testtube(self, pl_module, images, batch_idx, split):
+    def _tensorboard(self, pl_module, images, batch_idx, split):
         for k in images:
             grid = torchvision.utils.make_grid(images[k])
-            grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
-
+            grid = (grid + 1.0) / 2.0
             tag = f"{split}/{k}"
             pl_module.logger.experiment.add_image(
-                tag, grid,
-                global_step=pl_module.global_step)
+                tag, grid, global_step=pl_module.global_step
+            )
 
     @rank_zero_only
     def log_local(self, save_dir, split, images,
@@ -594,57 +568,36 @@ class SingleImageLogger(Callback):
         return False
 
 
-if __name__ == "__main__":
-    # custom parser to specify config files, train, test and debug mode,
-    # postfix, resume.
-    # `--key value` arguments are interpreted as arguments to the trainer.
-    # `nested.key=value` arguments are interpreted as config parameters.
-    # configs are merged from left-to-right followed by command line parameters.
+class CUDACallback(Callback):
+    # see https://github.com/SeanNaren/minGPT/blob/master/mingpt/callback.py
+    def on_train_epoch_start(self, trainer, pl_module):
+        # Reset the memory use counter
+        torch.cuda.reset_peak_memory_stats(trainer.strategy.root_device)
+        torch.cuda.synchronize(trainer.strategy.root_device)
+        self.start_time = time.time()
 
-    # model:
-    #   base_learning_rate: float
-    #   target: path to lightning module
-    #   params:
-    #       key: value
-    # data:
-    #   target: main.DataModuleFromConfig
-    #   params:
-    #      batch_size: int
-    #      wrap: bool
-    #      train:
-    #          target: path to train dataset
-    #          params:
-    #              key: value
-    #      validation:
-    #          target: path to validation dataset
-    #          params:
-    #              key: value
-    #      test:
-    #          target: path to test dataset
-    #          params:
-    #              key: value
-    # lightning: (optional, has sane defaults and can be specified on cmdline)
-    #   trainer:
-    #       additional arguments to trainer
-    #   logger:
-    #       logger to instantiate
-    #   modelcheckpoint:
-    #       modelcheckpoint to instantiate
-    #   callbacks:
-    #       callback1:
-    #           target: importpath
-    #           params:
-    #               key: value
+    def on_train_epoch_end(self, trainer, pl_module, outputs):
+        torch.cuda.synchronize(trainer.strategy.root_device)
+        max_memory = torch.cuda.max_memory_allocated(
+            trainer.strategy.root_device) / 2 ** 20
+        epoch_time = time.time() - self.start_time
+
+        try:
+            max_memory = trainer.training_type_plugin.reduce(max_memory)
+            epoch_time = trainer.training_type_plugin.reduce(epoch_time)
+
+            rank_zero_info(f"Average Epoch time: {epoch_time:.2f} seconds")
+            rank_zero_info(f"Average Peak memory {max_memory:.2f}MiB")
+        except AttributeError:
+            pass
+
+if __name__ == "__main__":
 
     now = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
 
-    # add cwd for convenience and to make classes in this file available when
-    # running as `python main.py`
-    # (in particular `main.DataModuleFromConfig`)
     sys.path.append(os.getcwd())
 
     parser = get_parser()
-    # parser = Trainer.add_argparse_args(parser)
 
     opt, unknown = parser.parse_known_args()
     if opt.name and opt.resume:
@@ -776,15 +729,15 @@ if __name__ == "__main__":
                     "id": nowname,
                 }
             },
-            "testtube": {
-                "target": "pytorch_lightning.loggers.TestTubeLogger",
-                "params": {
-                    "name": "testtube",
-                    "save_dir": logdir,
+            "tensorboard": {
+            "target": "pytorch_lightning.loggers.TensorBoardLogger",
+            "params": {
+                "save_dir": logdir,
+                "name": "tensorboard",
                 }
             },
         }
-        default_logger_cfg = default_logger_cfgs["testtube"]
+        default_logger_cfg = default_logger_cfgs["tensorboard"]
         if "logger" in lightning_config:
             logger_cfg = lightning_config.logger
         else:
@@ -904,7 +857,11 @@ if __name__ == "__main__":
             from pytorch_lightning.trainer.connectors.checkpoint_connector import CheckpointConnector
             setattr(CheckpointConnector, "hpc_resume_path", None)
 
-        trainer = Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
+        # trainer = Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
+        trainer = Trainer(
+            **vars(trainer_opt),
+            **trainer_kwargs
+        )
         trainer.logdir = logdir
 
         # data

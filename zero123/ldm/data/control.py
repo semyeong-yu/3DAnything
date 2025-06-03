@@ -29,7 +29,7 @@ class ObjaverseData(Dataset):
         
         self.caption_path = caption_path
         if caption_path is not None:
-            self.caption = pd.read_csv(caption_path, header=None)
+            self.caption = pd.read_csv(caption_path)
             
         
         self.return_paths = return_paths

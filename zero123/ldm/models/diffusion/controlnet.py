@@ -57,7 +57,8 @@ class MultiControlNet(LatentDiffusion):
         # TODO DDPM class로 hack을 해야한다.
         # TODO -> DONE 입력 loader 또한 변형을 해주어야 한다.
         # cond_txt = torch.cat(cond['c_crossattn'], 1)
-        cond_txt = torch.cat(cond['c_text'], 1)
+        # import ipdb; ipdb.set_trace()
+        cond_txt = cond['c_text']
         
         # pose controller에는 text와 pose 정보가 conditioning을 하되, hint는 None으로 한다.
         # 그리하여 initial noise와 vanilla text embedding with pose injection 정보를 embedding하는 network가 되도록 해야 한다.
@@ -81,7 +82,7 @@ class MultiControlNet(LatentDiffusion):
             # hint가 어떻게 쓰이는지, 무조건 있어야 하는가? 이러한 것들
             if c_key == 'pose':
                 control_list.append(
-                    c_model(x=x_noisy, hint=None, timesteps=t, context=torch.cat(cond['c_text_pose'], 1))
+                    c_model(x=x_noisy, hint=None, timesteps=t, context=cond['c_text_pose'])
                 )
             elif c_key == 'canny':
                 # 원본 controlnet에서는 convolution layer로 latent space로 mapping하는 데 여기 코드 구현 좀 봐야겠다.
@@ -127,6 +128,7 @@ class MultiControlNet(LatentDiffusion):
         return cond
 
     @torch.no_grad()
+    # TODO 여기 뜯어 고쳐야 함
     def log_images(self, batch, N=4, n_row=2, sample=False, ddim_steps=50, ddim_eta=0.0, plot_denoise_rows=False, plot_diffusion_rows=False, unconditional_guidance_scale=9.0, unconditional_guidance_label=None, **kwargs):
         use_ddim = ddim_steps is not None
 
@@ -168,9 +170,12 @@ class MultiControlNet(LatentDiffusion):
                 log["denoise_row"] = denoise_grid
 
         if unconditional_guidance_scale > 1.0:
+            
+            # T2I image generation이므로 여기에 쓸 unconditional signal은 null text가 되어야 한다.
             uc_cross = torch.zeros_like(c["c_crossattn"][0])
             uc_cat = torch.zeros_like(c["c_concat"][0]) # c_control
             uc_full = {"c_concat": [uc_cat], "c_crossattn": [uc_cross]}
+            
             samples_cfg, _ = self.sample_log(cond=c,
                                              batch_size=N, ddim=use_ddim,
                                              ddim_steps=ddim_steps, eta=ddim_eta,
@@ -196,8 +201,9 @@ class MultiControlNet(LatentDiffusion):
         
         """
         lr = self.learning_rate
-        params = list(self.control_model.parameters())
+        params = list(self.control_model_list.parameters())
         if not self.sd_locked:
+            # self.model.eval()
             params += list(self.model.diffusion_model.output_blocks.parameters())
             params += list(self.model.diffusion_model.out.parameters())
         if self.cc_projection is not None:

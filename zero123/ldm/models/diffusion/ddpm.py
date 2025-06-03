@@ -128,10 +128,12 @@ class DDPM(pl.LightningModule):
         self.loss_type = loss_type
 
         self.learn_logvar = learn_logvar
-        self.logvar = torch.full(fill_value=logvar_init, size=(self.num_timesteps,))
+        logvar = torch.full(fill_value=logvar_init, size=(self.num_timesteps,))
         if self.learn_logvar:
-            self.logvar = nn.Parameter(self.logvar, requires_grad=True)
-
+            self.logvar = nn.Parameter(logvar, requires_grad=True)
+        else:
+            self.register_buffer('logvar', logvar, persistent=False)
+        
         self.ucg_training = ucg_training or dict()
         if self.ucg_training:
             self.ucg_prng = np.random.RandomState()
@@ -455,7 +457,7 @@ class DDPM(pl.LightningModule):
         return loss
 
     @torch.no_grad()
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
         _, loss_dict_no_ema = self.shared_step(batch)
         with self.ema_scope():
             _, loss_dict_ema = self.shared_step(batch)
@@ -584,7 +586,7 @@ class LatentDiffusion(DDPM):
 
     @rank_zero_only
     @torch.no_grad()
-    def on_train_batch_start(self, batch, batch_idx, dataloader_idx):
+    def on_train_batch_start(self, batch, batch_idx, dataloader_idx=0):
         # only for very first batch
         if self.scale_by_std and self.current_epoch == 0 and self.global_step == 0 and batch_idx == 0 and not self.restarted_from_ckpt:
             assert self.scale_factor == 1., 'rather not use custom rescaling and std-rescaling simultaneously'
@@ -769,6 +771,7 @@ class LatentDiffusion(DDPM):
         
         # 여기 분석하기
         x = super().get_input(batch, k)
+        num_B = x.shape[0]
         # TODO 보다보니 T로 conditioning을 하는 부분이 없는데?
         T = batch['T'].to(memory_format=torch.contiguous_format).float()
         
@@ -787,8 +790,10 @@ class LatentDiffusion(DDPM):
         
         cond_key = cond_key or self.cond_stage_key
         # TODO dataloader 수정 필요
-        
-        xc = super().get_input(batch, cond_key).to(self.device)
+        if cond_key == "txt":
+            xc = batch["txt"]
+        else:
+            xc = super().get_input(batch, cond_key).to(self.device)
         # xc 어떻게 construct 되는가?
         if bs is not None:
             xc = xc[:bs]
@@ -796,23 +801,29 @@ class LatentDiffusion(DDPM):
 
         # To support classifier-free guidance, randomly drop out only text conditioning 5%, only image conditioning 5%, and both 5%.
         random = torch.rand(x.size(0), device=x.device)
-        # prompt_mask = rearrange(random < 2 * uncond, "n -> n 1 1")
-        prompt_mask = rearrange(random < 2 * uncond, "n -> n 1")
+        prompt_mask = rearrange(random < 2 * uncond, "n -> n 1 1")
+        # prompt_mask = rearrange(random < 2 * uncond, "n -> n 1")  # for image 
         input_mask = 1 - rearrange((random >= uncond).float() * (random < 3 * uncond).float(), "n -> n 1 1 1")
         
-        null_prompt = self.get_learned_conditioning([""])  # text embedding을 사용하기 때문에 이게 맞아유
+        # import ipdb; ipdb.set_trace()
 
+        null_prompt = self.get_learned_conditioning([""]).repeat(num_B, 1, 1)  # text embedding을 사용하기 때문에 이게 맞아유
         # z.shape: [8, 4, 64, 64]; c.shape: [8, 1, 768]
         # print('=========== xc shape ===========', xc.shape)
         with torch.enable_grad():
             # NOTE 여기 clip embedding이 text 기반인지 image 기반 인지 알아야함, 역시 image 기반이였다. (image -> latent)
+            
             clip_emb = self.get_learned_conditioning(xc).detach()
             # null_prompt = torch.zeros_like(clip_emb)
             
             # cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]
             cond["c_text"] = torch.where(prompt_mask, null_prompt, clip_emb)
             
-            cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]  # explicitly for zero123 control net
+            # cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]  # explicitly for zero123 control net
+            text_len = clip_emb.shape[1]
+            
+            cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb), T[:, None, :].repeat(1, text_len, 1)], dim=-1))]  # explicitly for zero123 control net
+            # [64, 77, 768], [64, 1, 4]
             
             # TODO: hard coded here
             cond["canny"] = super().get_input(batch, "canny").to(self.device)  # canny edge map
@@ -1092,6 +1103,8 @@ class LatentDiffusion(DDPM):
 
         loss_simple = self.get_loss(model_output, target, mean=False).mean([1, 2, 3])
         loss_dict.update({f'{prefix}/loss_simple': loss_simple.mean().squeeze()})
+        
+        # import ipdb; ipdb.set_trace()
 
         logvar_t = self.logvar[t].to(self.device)
         loss = loss_simple / torch.exp(logvar_t) + logvar_t
