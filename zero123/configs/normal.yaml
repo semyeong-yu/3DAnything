@@ -87,12 +87,12 @@ data:
     num_workers: 8
     shuffle_val_dataloader: True
     train:
-      target: ldm.data.control.ObjaverseData
+      target: ldm.data.control.ObjaverseDataNormal
       params:
         txt_path: '/mnt/datassd/seeha/3DAnything/zero123/configs/train.txt'
     
     validation:
-      target: ldm.data.control.ObjaverseData
+      target: ldm.data.control.ObjaverseDataNormal
       params:
         txt_path: '/mnt/datassd/seeha/3DAnything/zero123/configs/val.txt'
 
