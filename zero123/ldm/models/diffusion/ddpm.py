@@ -526,6 +526,7 @@ class LatentDiffusion(DDPM):
                  cond_stage_config,
                  num_timesteps_cond=None,
                  cond_stage_key="image",
+                 text_stage_key="image",
                  cond_stage_trainable=False,
                  concat_mode=True,
                  cond_stage_forward=None,
@@ -549,6 +550,7 @@ class LatentDiffusion(DDPM):
         self.cond_stage_trainable = cond_stage_trainable
         self.unet_trainable = unet_trainable
         self.cond_stage_key = cond_stage_key
+        self.text_stage_key = text_stage_key
         try:
             self.num_downs = len(first_stage_config.params.ddconfig.ch_mult) - 1
         except:
@@ -774,8 +776,11 @@ class LatentDiffusion(DDPM):
         z = self.get_first_stage_encoding(encoder_posterior).detach()
         cond_key = cond_key or self.cond_stage_key
         xc = super().get_input(batch, cond_key).to(self.device)
+        text_key = self.text_stage_key
+        xt = super().get_input(batch, text_key).to(self.device)
         if bs is not None:
             xc = xc[:bs]
+            xt = xt[:bs]
         cond = {}
 
         # To support classifier-free guidance, randomly drop out only text conditioning 5%, only image conditioning 5%, and both 5%.
@@ -788,7 +793,7 @@ class LatentDiffusion(DDPM):
         # z.shape: [8, 4, 64, 64]; c.shape: [8, 1, 768]
         # print('=========== xc shape ===========', xc.shape)
         with torch.enable_grad():
-            clip_emb = self.get_learned_conditioning(xc).detach()
+            clip_emb = self.get_learned_conditioning(xt).detach()
             # null_prompt = self.get_learned_conditioning([""]).detach(
             null_prompt = torch.zeros_like(clip_emb)
             cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]

@@ -97,6 +97,7 @@ class ControlLDM(LatentDiffusion):
         c_control = c["c_concat"][0][:N]
         n_row = min(x.shape[0], n_row)
         log["inputs"] = x
+        log["cond"] = xc
         log["reconstruction"] = xrec
         log["control"] = c_control
         

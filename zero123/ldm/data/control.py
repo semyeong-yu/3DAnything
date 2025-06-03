@@ -97,6 +97,7 @@ class ObjaverseData(Dataset):
         color = [1., 1., 1., 1.]
         target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target)))
         cond_im = self.process_im(self.load_im(os.path.join(filename, 'cannyedge_render', '%03d.png' % index_cond)))
+        cond_text = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_cond)))
         # target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target), color))
         # cond_im = self.process_im(self.load_im(os.path.join(filename, '%03d.png' % index_cond), color))
         target_RT = np.load(os.path.join(filename, 'annotation', '%03d.npy' % index_target), allow_pickle=True).item()['matrix_world']
@@ -104,6 +105,7 @@ class ObjaverseData(Dataset):
 
         data["image_target"] = target_im
         data["image_cond"] = cond_im
+        data["image_text"] = cond_text
         data["T"] = self.get_T(target_RT, cond_RT)
 
         return data

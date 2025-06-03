@@ -236,7 +236,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
         else:
             init_fn = None
         return DataLoader(self.datasets["train"], batch_size=self.batch_size,
-                          num_workers=self.num_workers, shuffle=False if is_iterable_dataset else True,
+                          num_workers=self.num_workers, shuffle=True,
                           worker_init_fn=init_fn)
 
     def _val_dataloader(self, shuffle=False):
@@ -335,7 +335,8 @@ class ImageLogger(Callback):
         self.batch_freq = batch_frequency
         self.max_images = max_images
         self.logger_log_images = {
-            pl.loggers.TestTubeLogger: self._testtube,
+            # pl.loggers.TestTubeLogger: self._testtube,
+            pl.loggers.TensorBoardLogger: self._tensorboard,
         }
         self.log_steps = [2 ** n for n in range(int(np.log2(self.batch_freq)) + 1)]
         if not increase_log_steps:
@@ -349,6 +350,17 @@ class ImageLogger(Callback):
 
     @rank_zero_only
     def _testtube(self, pl_module, images, batch_idx, split):
+        for k in images:
+            grid = torchvision.utils.make_grid(images[k])
+            grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
+
+            tag = f"{split}/{k}"
+            pl_module.logger.experiment.add_image(
+                tag, grid,
+                global_step=pl_module.global_step)
+            
+    @rank_zero_only
+    def _tensorboard(self, pl_module, images, batch_idx, split):
         for k in images:
             grid = torchvision.utils.make_grid(images[k])
             grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
@@ -380,39 +392,38 @@ class ImageLogger(Callback):
 
     def log_img(self, pl_module, batch, batch_idx, split="train"):
         check_idx = batch_idx if self.log_on_batch_idx else pl_module.global_step
-        if self.log_all_val and split == "val":
-            should_log = True
-        else:
-            should_log = self.check_frequency(check_idx)
-        if (should_log and  (check_idx % self.batch_freq == 0) and
-                hasattr(pl_module, "log_images") and
-                callable(pl_module.log_images) and
-                self.max_images > 0):
-            logger = type(pl_module.logger)
+        # if self.log_all_val and split == "val":
+        #     should_log = True
+        # else:
+        #     should_log = self.check_frequency(check_idx)
+        # if (should_log and  (check_idx % self.batch_freq == 0) and hasattr(pl_module, "log_images") and callable(pl_module.log_images) and self.max_images > 0):
+        if (hasattr(pl_module, "log_images") and callable(pl_module.log_images) and  self.max_images > 0):
+            if (split=='train' and self.check_frequency(check_idx)) or split=='val':
+                logger = type(pl_module.logger)
 
-            is_train = pl_module.training
-            if is_train:
-                pl_module.eval()
+                is_train = pl_module.training
+                if is_train:
+                    pl_module.eval()
 
-            with torch.no_grad():
-                images = pl_module.log_images(batch, split=split, **self.log_images_kwargs)
+                with torch.no_grad():
+                    images = pl_module.log_images(batch, split=split, **self.log_images_kwargs)
 
-            for k in images:
-                N = min(images[k].shape[0], self.max_images)
-                images[k] = images[k][:N]
-                if isinstance(images[k], torch.Tensor):
-                    images[k] = images[k].detach().cpu()
-                    if self.clamp:
-                        images[k] = torch.clamp(images[k], -1., 1.)
+                for k in images:
+                    N = min(images[k].shape[0], self.max_images)
+                    images[k] = images[k][:N]
+                    if isinstance(images[k], torch.Tensor):
+                        images[k] = images[k].detach().cpu()
+                        if self.clamp:
+                            images[k] = torch.clamp(images[k], -1., 1.)
 
-            self.log_local(pl_module.logger.save_dir, split, images,
-                           pl_module.global_step, pl_module.current_epoch, batch_idx)
+                self.log_local(pl_module.logger.save_dir, split, images,
+                            pl_module.global_step, pl_module.current_epoch, batch_idx)
 
-            logger_log_images = self.logger_log_images.get(logger, lambda *args, **kwargs: None)
-            logger_log_images(pl_module, images, pl_module.global_step, split)
+                logger_log_images = self.logger_log_images.get(logger, lambda *args, **kwargs: None)
+                logger_log_images(pl_module, images, pl_module.global_step, split)
 
-            if is_train:
-                pl_module.train()
+                if is_train:
+                    pl_module.train()
 
     def check_frequency(self, check_idx):
         if ((check_idx % self.batch_freq) == 0 or (check_idx in self.log_steps)) and (
@@ -755,15 +766,15 @@ if __name__ == "__main__":
             "target": "pytorch_lightning.callbacks.ModelCheckpoint",
             "params": {
                 "dirpath": ckptdir,
-                "filename": "{epoch:06}",
+                "filename": "{epoch:06}-{step:09}",
                 "verbose": True,
-                "save_last": True,
+                "save_top_k": -1,
             }
         }
-        if hasattr(model, "monitor"):
-            rank_zero_print(f"Monitoring {model.monitor} as checkpoint metric.")
-            default_modelckpt_cfg["params"]["monitor"] = model.monitor
-            default_modelckpt_cfg["params"]["save_top_k"] = 3
+        # if hasattr(model, "monitor"):
+        #     rank_zero_print(f"Monitoring {model.monitor} as checkpoint metric.")
+        #     default_modelckpt_cfg["params"]["monitor"] = model.monitor
+            # default_modelckpt_cfg["params"]["save_top_k"] = 3
 
         if "modelcheckpoint" in lightning_config:
             modelckpt_cfg = lightning_config.modelcheckpoint
@@ -827,7 +838,7 @@ if __name__ == "__main__":
                          "filename": "{epoch:06}-{step:09}",
                          "verbose": True,
                          'save_top_k': -1,
-                         'every_n_train_steps': 10000,
+                         'every_n_train_steps': 100,
                          'save_weights_only': True
                      }
                      }

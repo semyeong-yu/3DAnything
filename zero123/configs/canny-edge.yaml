@@ -9,7 +9,8 @@ model:
     timesteps: 1000
     first_stage_key: "image_target"
     cond_stage_key: "image_cond"
-    control_key: "canny"
+    text_stage_key: "image_text"
+    control_key: ""
     image_size: 32
     channels: 4
     cond_stage_trainable: false
@@ -84,6 +85,7 @@ data:
   params:
     batch_size: 64
     num_workers: 64
+    shuffle_val_dataloader: True
     train:
       target: ldm.data.control.ObjaverseData
       params:
@@ -100,7 +102,7 @@ lightning:
       target: main.ImageLogger
       params:
         batch_frequency: 100
-        max_images: 16
+        max_images: 32
         increase_log_steps: False
         log_first_step: True
         log_images_kwargs:
@@ -108,7 +110,7 @@ lightning:
           inpaint: False
           plot_progressive_rows: False
           plot_diffusion_rows: False
-          N: 16
+          N: 32
           unconditional_guidance_scale: 3.0
           unconditional_guidance_label: [""]
 
@@ -119,5 +121,6 @@ lightning:
 
   trainer:
     benchmark: True
-    max_steps: 2010000
+    max_steps: 50100
     check_val_every_n_epoch: 10
+    limit_val_batches: 1
