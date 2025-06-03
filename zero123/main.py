@@ -160,12 +160,19 @@ def get_parser(**parser_kwargs):
         default=512,
         help="resolution of image",
     )
+    
+    # newly added
+    parser.add_argument(
+        "--load_composed_weights",
+        action="store_true",
+    )
+    
     return parser
 
 
 def nondefault_trainer_args(opt):
     parser = argparse.ArgumentParser()
-    parser = Trainer.add_argparse_args(parser)
+    # parser = Trainer.add_argparse_args(parser)
     args = parser.parse_args([])
     return sorted(k for k in vars(args) if getattr(opt, k) != getattr(args, k))
 
@@ -637,7 +644,7 @@ if __name__ == "__main__":
     sys.path.append(os.getcwd())
 
     parser = get_parser()
-    parser = Trainer.add_argparse_args(parser)
+    # parser = Trainer.add_argparse_args(parser)
 
     opt, unknown = parser.parse_known_args()
     if opt.name and opt.resume:
@@ -749,6 +756,11 @@ if __name__ == "__main__":
             if len(u) > 0:
                 rank_zero_print("unexpected keys:")
                 rank_zero_print(u)
+        
+        if opt.load_composed_weights:
+            model.load_pre_control(
+                pre_control_cfg=config.get("pre_control", None),
+            )
 
         # trainer and callbacks
         trainer_kwargs = dict()

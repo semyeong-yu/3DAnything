@@ -2,7 +2,7 @@
 # 먼저 checkpoint를 불러올 때, stable diffusion t2i를 불러오고 controlNet을 2개로 하는 전략을 취해야 겠다.
 model:
   base_learning_rate: 1.0e-05
-  target: ldm.models.diffusion.controlnet.ControlLDM  # NOTE 여기 수정 필요
+  target: ldm.models.diffusion.controlnet.MultiControlNet  # NOTE 여기 수정 필요
   params:
     linear_start: 0.00085
     linear_end: 0.0120
@@ -141,14 +141,16 @@ data:
     train:
       target: ldm.data.control.ObjaverseData
       params:
-        root_dir: '/mnt/datassd/seeha/data/3D/objaverse'
-        txt_path: '/mnt/datassd/seeha/3DAnything/zero123/configs/train.txt'
+        root_dir: "/workspace/data/3ddst/train"
+        txt_path: "/workspace/code/3DAnything/zero123/configs/train.txt"
+        caption_path: "/workspace/code/3DAnything/debug/data/captions.csv"
     
     validation:
       target: ldm.data.control.ObjaverseData
       params:
-        root_dir: '/mnt/datassd/seeha/data/3D/objaverse'
-        txt_path: '/mnt/datassd/seeha/3DAnything/zero123/configs/val.txt'
+        root_dir: "/workspace/data/3ddst/train"
+        txt_path: "/workspace/code/3DAnything/zero123/configs/val.txt"
+        caption_path: "/workspace/code/3DAnything/debug/data/captions.csv"
 
 lightning:
   callbacks:
@@ -177,3 +179,9 @@ lightning:
     benchmark: True
     max_steps: 2010000
     check_val_every_n_epoch: 10
+  
+pre_control:
+  path:
+    sd: /workspace/weight/diffuse/stable-diffusion-v-1-4-original/sd-v1-4.ckpt
+    pose: /workspace/weight/diffuse/zero123-weights/165000.ckpt
+    canny: "/workspace/weight/diffuse/ControlNet/models/control_sd15_canny.pth"

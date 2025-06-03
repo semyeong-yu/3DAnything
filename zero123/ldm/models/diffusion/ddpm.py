@@ -814,7 +814,8 @@ class LatentDiffusion(DDPM):
             
             cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]  # explicitly for zero123 control net
             
-            cond[]
+            # TODO: hard coded here
+            cond["canny"] = super().get_input(batch, "canny").to(self.device)  # canny edge map
             
             
         # cond["c_concat"] = [input_mask * self.encode_first_stage((xc.to(self.device))).mode().detach()]

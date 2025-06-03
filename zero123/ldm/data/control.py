@@ -10,12 +10,14 @@ import os
 import math
 from torchvision import transforms
 from einops import rearrange
+import pandas as pd 
 
 # NOTE: 여기가 현재 사용하는 data의 정의 부분
 class ObjaverseData(Dataset):
     def __init__(self,
-        root_dir='/mnt/datassd/seeha/data/3D/objaverse',
-        txt_path='/mnt/datassd/seeha/3DAnything/zero123/configs/train.txt',
+        root_dir,
+        txt_path,
+        caption_path=None,
         default_trans=torch.zeros(3),
         return_paths=False,
         total_view=12,
@@ -24,6 +26,12 @@ class ObjaverseData(Dataset):
         
         self.root_dir = Path(root_dir)
         self.default_trans = default_trans
+        
+        self.caption_path = caption_path
+        if caption_path is not None:
+            self.caption = pd.read_csv(caption_path, header=None)
+            
+        
         self.return_paths = return_paths
         self.total_view = total_view
         # self.tform = image_transforms
@@ -102,8 +110,11 @@ class ObjaverseData(Dataset):
             data["path"] = str(filename)
             
         color = [1., 1., 1., 1.]
-        target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target)))
+        target_img_path = os.path.join(filename, 'image_render', '%03d.png' % index_target)
+        target_im = self.process_im(self.load_im(target_img_path))
+        
         # 아마 바꾼다면 이부분에서 conditioning을 약간 바꾸면 될 것이다.
+        
         cond_im = self.process_im(self.load_im(os.path.join(filename, 'cannyedge_render', '%03d.png' % index_cond)))
         # target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target), color))
         # cond_im = self.process_im(self.load_im(os.path.join(filename, '%03d.png' % index_cond), color))
@@ -113,8 +124,15 @@ class ObjaverseData(Dataset):
         data["image_target"] = target_im
 
         # 현재는 conditional image를 통해서
-        data["image_cond"] = cond_im
+        data["canny"] = cond_im
         data["T"] = self.get_T(target_RT, cond_RT)
+        
+        if self.caption_path is not None:
+            split_path = target_img_path.split('/')
+            data["txt"] = self.caption[
+                (self.caption["base_name"] == split_path[-1]) &
+                (self.caption["class"] == split_path[-3])
+            ]["caption"].values[0]
 
         return data
     

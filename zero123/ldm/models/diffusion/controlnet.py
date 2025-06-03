@@ -2,7 +2,7 @@ import einops
 import torch
 import torch.nn as nn
 
-from omegaconf import ListConfig
+from omegaconf import ListConfig, DictConfig
 from einops import rearrange, repeat
 from torchvision.utils import make_grid
 from ldm.models.diffusion.ddpm import LatentDiffusion
@@ -23,11 +23,12 @@ class MultiControlNet(LatentDiffusion):
         # 이 부분을 개조 하면 될 것으로 보인다.
         # 처음이 pose에 대한 network, 두번째가 canny edge에 대한 network
         self.control_key_list: List[str] = control_key
+        # self.control_stage_config = control_stage_config
         
         self.control_model_list = nn.ModuleList()
         if not isinstance(control_stage_config, list):
-            assert isinstance(control_stage_config, list), f"control_stage_config should be a list of controlnet configs, but got {type(control_stage_config)} as {control_stage_config}"
-        for i, control_model in enumerate(self.control_stage_config):
+            assert isinstance(control_stage_config, ListConfig), f"control_stage_config should be a list of controlnet configs, but got {type(control_stage_config)} as {control_stage_config}"
+        for i, control_model in enumerate(control_stage_config):
             self.control_model_list.append(instantiate_from_config(control_model))
 
         self.only_mid_control = only_mid_control
@@ -54,10 +55,9 @@ class MultiControlNet(LatentDiffusion):
         # control of langauge
         # c_crossattn이 어떻게 construct 되는 지 확인 필요
         # TODO DDPM class로 hack을 해야한다.
-        # TODO 입력 loader 또한 변형을 해주어야 한다.
+        # TODO -> DONE 입력 loader 또한 변형을 해주어야 한다.
         # cond_txt = torch.cat(cond['c_crossattn'], 1)
         cond_txt = torch.cat(cond['c_text'], 1)
-
         
         # pose controller에는 text와 pose 정보가 conditioning을 하되, hint는 None으로 한다.
         # 그리하여 initial noise와 vanilla text embedding with pose injection 정보를 embedding하는 network가 되도록 해야 한다.
@@ -69,11 +69,11 @@ class MultiControlNet(LatentDiffusion):
         
         # zero convolution을 zero initialize를 꼭해서 diffusion이 망가지지 않도록 한다.
         
+        # control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
+        # control = [c * scale for c, scale in zip(control, self.control_scales)]
+        
         # TODO 여기 바꿔주기
         # 어떻게 control을 composition할 지도 중요한 issue이다.
-        control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
-        control = [c * scale for c, scale in zip(control, self.control_scales)]
-        
         control_list = []
         for c_key, c_model in zip(self.control_key_list, self.control_model_list):
             # pose 정보를 어떻게 embedding할 지에 대해서
@@ -83,14 +83,14 @@ class MultiControlNet(LatentDiffusion):
                 control_list.append(
                     c_model(x=x_noisy, hint=None, timesteps=t, context=torch.cat(cond['c_text_pose'], 1))
                 )
-            else:
+            elif c_key == 'canny':
                 # 원본 controlnet에서는 convolution layer로 latent space로 mapping하는 데 여기 코드 구현 좀 봐야겠다.
+                canny_image_embeding = cond["canny"]
                 control_list.append(
                     c_model(x=x_noisy, hint=canny_image_embeding, timesteps=t, context=cond_txt)
                 ) 
         
         control = []
-        # TODO: 여기에 실험할 요소가 많을 듯
         for ctr_idx, ctr_scale in enumerate(self.control_scales):
             control.append(
                 control_list[0][ctr_idx] * ctr_scale + control_list[1][ctr_idx] * ctr_scale 
@@ -220,7 +220,56 @@ class MultiControlNet(LatentDiffusion):
             self.first_stage_model = self.first_stage_model.cuda()
             self.cond_stage_model = self.cond_stage_model.cuda()
 
-
+    def load_pre_control(self, pre_control_cfg: DictConfig, debug=False):
+        
+        for key, value in pre_control_cfg.path.items():
+            if key == "sd":
+                print(f"Loading {key} control model weights")
+                weight = torch.load(value, map_location="cpu")["state_dict"]
+                ret = self.load_state_dict(weight, strict=False)
+                if debug:
+                    print(f"{key} Control model weights: {ret}")
+            elif key == "pose":
+                print(f"Loading {key} control model weights")
+                weight = torch.load(value, map_location="cpu")["state_dict"]
+                new_weight = {}
+                for k, v in weight.items():
+                    if ("diffusion_model" in k and "model_ema" not in k) and ("input_blocks" in k or "middle_block" in k):
+                        _k = k.replace("model.diffusion_model.", "")
+                        
+                        if "input_blocks.0.0.weight" in _k:
+                            # (320, 8, 3, 3) -> (320, 4, 2, 3, 3) -> (320, 4, 3, 3)
+                            v_shape = v.shape
+                            v = v.view(v_shape[0], v_shape[1] // 2, 2, v_shape[2], v_shape[3])
+                            v = v.mean(dim=2)
+                        
+                        if "zero_convs" in _k:
+                            v = torch.zeros_like(v)
+                        new_weight[_k] = v
+                    
+                    elif ("model_ema" not in k) and ("time_embed" in k):
+                        _k = k.replace("model.diffusion_model.", "")
+                    
+                        new_weight[_k] = v
+                        
+                ret = self.control_model_list[0].load_state_dict(new_weight, strict=False)
+                if debug:
+                    print(f"{key} Control model weights: {ret}")
+            elif key == "canny":
+                print(f"Loading {key} control model weights")
+                weight = torch.load(value, map_location="cpu")
+                new_weight = {}
+                for k, v in weight.items():
+                    if "control_model" in k:
+                        _k = k.replace("control_model.", "")
+                        if "zero_convs" in _k:
+                            v = torch.zeros_like(v)
+                        new_weight[_k] = v
+                        
+                ret = self.control_model_list[1].load_state_dict(new_weight, strict=False)
+                if debug:
+                    print(f"{key} Control model weights: {ret}")
+    
 class ControlLDM(LatentDiffusion):
     """
     1. DDPM model을 추가함
@@ -266,7 +315,7 @@ class ControlLDM(LatentDiffusion):
         control = [c * scale for c, scale in zip(control, self.control_scales)]
         # eps = diffusion_model(x=torch.cat([x_noisy] + cond['c_concat'], dim=1), timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
         
-        import ipdb; ipdb.set_trace()
+        # import ipdb; ipdb.set_trace()
         
         # control signal added 
         eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
