@@ -576,7 +576,7 @@ class CUDACallback(Callback):
         torch.cuda.synchronize(trainer.strategy.root_device)
         self.start_time = time.time()
 
-    def on_train_epoch_end(self, trainer, pl_module, outputs):
+    def on_train_epoch_end(self, trainer, pl_module):
         torch.cuda.synchronize(trainer.strategy.root_device)
         max_memory = torch.cuda.max_memory_allocated(
             trainer.strategy.root_device) / 2 ** 20
@@ -737,7 +737,7 @@ if __name__ == "__main__":
                 }
             },
         }
-        default_logger_cfg = default_logger_cfgs["tensorboard"]
+        default_logger_cfg = default_logger_cfgs["wandb"]
         if "logger" in lightning_config:
             logger_cfg = lightning_config.logger
         else:
@@ -847,7 +847,7 @@ if __name__ == "__main__":
         if not lightning_config.get("find_unused_parameters", True):
             from pytorch_lightning.plugins import DDPPlugin
             trainer_kwargs["plugins"].append(
-                DDPPlugin(find_unused_parameters=False))
+                DDPPlugin(find_unused_parameters=True))
         if MULTINODE_HACKS:
             # disable resume from hpc ckpts
             # NOTE below only works in later versions
@@ -858,9 +858,11 @@ if __name__ == "__main__":
             setattr(CheckpointConnector, "hpc_resume_path", None)
 
         # trainer = Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
+        from pytorch_lightning.strategies import DDPStrategy
         trainer = Trainer(
             **vars(trainer_opt),
-            **trainer_kwargs
+            **trainer_kwargs,
+            strategy=DDPStrategy(find_unused_parameters=True)
         )
         trainer.logdir = logdir
 

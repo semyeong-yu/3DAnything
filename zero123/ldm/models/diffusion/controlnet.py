@@ -135,7 +135,9 @@ class MultiControlNet(LatentDiffusion):
         log = dict()
         z, c, x, xrec, xc = self.get_input(batch, self.first_stage_key, return_first_stage_outputs=True, return_original_cond=True, bs=N)
         N = min(z.shape[0], N)
-        c_control = c["c_concat"][0][:N]
+        # c_control = c["c_concat"][0][:N]
+        c_control = c["canny"][:N]
+        
         n_row = min(x.shape[0], n_row)
         log["inputs"] = x
         log["reconstruction"] = xrec
@@ -170,8 +172,9 @@ class MultiControlNet(LatentDiffusion):
                 log["denoise_row"] = denoise_grid
 
         if unconditional_guidance_scale > 1.0:
-            
             # T2I image generation이므로 여기에 쓸 unconditional signal은 null text가 되어야 한다.
+            
+            #
             uc_cross = torch.zeros_like(c["c_crossattn"][0])
             uc_cat = torch.zeros_like(c["c_concat"][0]) # c_control
             uc_full = {"c_concat": [uc_cat], "c_crossattn": [uc_cross]}
