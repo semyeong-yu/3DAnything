@@ -777,7 +777,8 @@ class LatentDiffusion(DDPM):
         cond_key = cond_key or self.cond_stage_key
         xc = super().get_input(batch, cond_key).to(self.device)
         text_key = self.text_stage_key
-        xt = super().get_input(batch, text_key).to(self.device)
+        # xt = super().get_input(batch, text_key).to(self.device)
+        xt = xc
         if bs is not None:
             xc = xc[:bs]
             xt = xt[:bs]
@@ -797,8 +798,8 @@ class LatentDiffusion(DDPM):
             # null_prompt = self.get_learned_conditioning([""]).detach(
             null_prompt = torch.zeros_like(clip_emb)
             cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]
-        # cond["c_concat"] = [input_mask * self.encode_first_stage((xc.to(self.device))).mode().detach()]
-        cond["c_concat"] = [input_mask * xc.to(self.device)]
+        cond["c_concat"] = [input_mask * self.encode_first_stage((xc.to(self.device))).mode().detach()]
+        # cond["c_concat"] = [input_mask * xc.to(self.device)] # CONTROL
         out = [z, cond]
         if return_first_stage_outputs:
             xrec = self.decode_first_stage(z)
@@ -1384,8 +1385,11 @@ class LatentDiffusion(DDPM):
                 log["samples_x0_quantized"] = x_samples
 
         if unconditional_guidance_scale > 1.0:
-            uc = self.get_unconditional_conditioning(N, unconditional_guidance_label, image_size=x.shape[-1])
+            # uc = self.get_unconditional_conditioning(N, unconditional_guidance_label, image_size=x.shape[-1])
             # uc = torch.zeros_like(c)
+            uc = {}
+            uc["c_crossattn"] = [torch.zeros_like(c["c_crossattn"][0])]
+            uc["c_concat"] = [torch.zeros_like(c["c_concat"][0])]
             with ema_scope("Sampling with classifier-free guidance"):
                 samples_cfg, _ = self.sample_log(cond=c, batch_size=N, ddim=use_ddim,
                                                  ddim_steps=ddim_steps, eta=ddim_eta,
