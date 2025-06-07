@@ -111,7 +111,7 @@ class MultiControlNet(LatentDiffusion):
             # 따라서 input만 잘 정의해주면 이제 거의 문제가 끝나 가는 듯?
             eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
 
-            return eps
+        return eps
 
     # NOTE T2I image generation이므로 여기에 쓸 unconditional signal은 null text가 되어야 한다.
     @torch.no_grad()
