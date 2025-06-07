@@ -76,9 +76,9 @@ class MultiControlNet(LatentDiffusion):
         # TODO 여기 바꿔주기
         # 어떻게 control을 composition할 지도 중요한 issue이다.
         
-        if "c_null_text" in cond:
+        if "c_null_txt" in cond:
             # null condition diffusion
-            cond_txt = cond["c_null_text"]
+            cond_txt = cond["c_null_txt"]
             eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=None, only_mid_control=self.only_mid_control)    
         
         else:
