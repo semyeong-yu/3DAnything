@@ -136,7 +136,7 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 8
+    batch_size: 16
     num_workers: 8
     train:
       target: ldm.data.control.ObjaverseData
@@ -144,7 +144,7 @@ data:
         root_dir: "/workspace/data/3ddst/train"
         txt_path: "/workspace/code/3DAnything/zero123/configs/train.txt"
         caption_path: "/workspace/code/3DAnything/debug/data/captions.csv"
-        patch_size: 512
+        patch_size: 256
 
     validation:
       target: ldm.data.control.ObjaverseData
@@ -152,7 +152,7 @@ data:
         root_dir: "/workspace/data/3ddst/train"
         txt_path: "/workspace/code/3DAnything/zero123/configs/val.txt"
         caption_path: "/workspace/code/3DAnything/debug/data/captions.csv"
-        patch_size: 512
+        patch_size: 256
 
 lightning:
   callbacks:
@@ -169,7 +169,7 @@ lightning:
           plot_progressive_rows: False
           plot_diffusion_rows: False
           N: 16
-          unconditional_guidance_scale: 3.0
+          unconditional_guidance_scale: 7.5
           unconditional_guidance_label: [""]
 
   modelcheckpoint:

@@ -200,6 +200,8 @@ class MultiControlNet(LatentDiffusion):
                                              )
             x_samples_cfg = self.decode_first_stage(samples_cfg)
             log[f"samples_cfg_scale_{unconditional_guidance_scale:.2f}"] = x_samples_cfg
+        
+        # import ipdb; ipdb.set_trace()
 
         return log
 

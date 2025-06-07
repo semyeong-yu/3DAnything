@@ -136,7 +136,7 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 4
+    batch_size: 16
     num_workers: 8
     train:
       target: ldm.data.control.ObjaverseData
@@ -159,8 +159,8 @@ lightning:
     image_logger:
       target: main.ImageLogger
       params:
-        batch_frequency: 1
-        max_images: 4
+        batch_frequency: 500
+        max_images: 16
         increase_log_steps: False
         log_first_step: True
         log_images_kwargs:
@@ -175,11 +175,11 @@ lightning:
   modelcheckpoint:
     target: pytorch_lightning.callbacks.ModelCheckpoint
     params:
-      every_n_train_steps: 100
+      every_n_train_steps: 1000
 
   trainer:
     benchmark: True
-    max_steps: 2010000
+    max_steps: 50000
     check_val_every_n_epoch: 10
     num_sanity_val_steps: 0
   

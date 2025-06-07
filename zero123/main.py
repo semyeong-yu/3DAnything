@@ -13,6 +13,8 @@ import pytorch_lightning as pl
 import copy
 import math
 
+import wandb
+
 from packaging import version
 from omegaconf import OmegaConf
 from torch.utils.data import random_split, DataLoader, Dataset, Subset
@@ -25,6 +27,8 @@ from pytorch_lightning.callbacks import ModelCheckpoint, Callback, LearningRateM
 # from pytorch_lightning.utilities.distributed import rank_zero_only
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from pytorch_lightning.utilities import rank_zero_info
+
+from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 
 from ldm.data.base import Txt2ImgIterableBaseDataset
 from ldm.util import instantiate_from_config
@@ -360,7 +364,8 @@ class ImageLogger(Callback):
         self.batch_freq = batch_frequency
         self.max_images = max_images
         self.logger_log_images = {
-            pl.loggers.TensorBoardLogger: self._tensorboard,
+            TensorBoardLogger: self._tensorboard,
+            WandbLogger: self._wandb,
         }
         self.log_steps = [
             2 ** n for n in range(int(np.log2(self.batch_freq)) + 1)]
@@ -382,6 +387,16 @@ class ImageLogger(Callback):
             pl_module.logger.experiment.add_image(
                 tag, grid, global_step=pl_module.global_step
             )
+    
+    @rank_zero_only
+    def _wandb(self, pl_module, images, global_step, split):
+        for k in images:
+            grid = torchvision.utils.make_grid(images[k])
+            grid = (grid + 1.0) / 2.0
+            tag = f"{split}/images/{k}"
+            wandb_image = wandb.Image(grid)
+            pl_module.logger.experiment.log({tag: wandb_image})
+    
     @rank_zero_only
     def log_local(self, save_dir, split, images,
                   global_step, current_epoch, batch_idx):

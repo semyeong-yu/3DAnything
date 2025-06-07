@@ -159,7 +159,7 @@ lightning:
     image_logger:
       target: main.ImageLogger
       params:
-        batch_frequency: 500
+        batch_frequency: 100
         max_images: 16
         increase_log_steps: False
         log_first_step: True
@@ -181,7 +181,6 @@ lightning:
     benchmark: True
     max_steps: 50000
     check_val_every_n_epoch: 10
-    num_sanity_val_steps: 0
   
 pre_control:
   path:
