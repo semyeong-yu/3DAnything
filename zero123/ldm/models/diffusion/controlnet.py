@@ -17,7 +17,7 @@ from typing import List
 # 증손자 class
 
 class MultiControlNet(LatentDiffusion):
-    def __init__(self, control_stage_config, control_key, only_mid_control, *args, **kwargs):
+    def __init__(self, control_stage_config, control_key, only_mid_control, uncond=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
         # 이 부분을 개조 하면 될 것으로 보인다.
@@ -30,13 +30,22 @@ class MultiControlNet(LatentDiffusion):
             assert isinstance(control_stage_config, ListConfig), f"control_stage_config should be a list of controlnet configs, but got {type(control_stage_config)} as {control_stage_config}"
         for i, control_model in enumerate(control_stage_config):
             self.control_model_list.append(instantiate_from_config(control_model))
-
+        
         self.only_mid_control = only_mid_control
         self.control_scales = [1.0] * 13
+        
+        self.uncond = uncond
+        if self.uncond is not None:
+            print(f"Using uncond prob: {self.uncond}")
+        
         # TODO 현재 보기에는 control_scales이 다 똑같은데 spatial resolution별로 다르게 조절하는 것이 좋을 것이다.
 
     @torch.no_grad()
     def get_input(self, batch, k, return_first_stage_outputs=False, cond_key=None, return_original_cond=False, bs=None, uncond=0.05):
+        
+        if uncond != 0.05 and getattr(self, "uncond", None) is not None:
+            uncond = self.uncond 
+        
         inputs = super().get_input(batch, k, return_first_stage_outputs, cond_key, return_original_cond, bs, uncond) # c : {c_concat : pimg], c_crossattn : [text + pose]}
         z = inputs[0]
         c = inputs[1]

@@ -311,6 +311,7 @@ class ControlNet(nn.Module):
         h = x.type(self.dtype)  # tensor type casting
         for module, zero_conv in zip(self.input_blocks, self.zero_convs):
             if guided_hint is not None:
+                # 여기서 터진다. shape check 필요
                 h = module(h, emb, context)
                 h += guided_hint
                 guided_hint = None

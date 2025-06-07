@@ -116,11 +116,10 @@ class ObjaverseData(Dataset):
         target_img_path = os.path.join(filename, 'image_render', index_target + '.png')
         target_im = self.process_im(self.load_im(target_img_path))
         
-        # 아마 바꾼다면 이부분에서 conditioning을 약간 바꾸면 될 것이다.
         
-        cond_im = self.process_im(self.load_im(os.path.join(filename, 'cannyedge_render', index_target + '.png')))
-        # target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target), color))
-        # cond_im = self.process_im(self.load_im(os.path.join(filename, '%03d.png' % index_cond), color))
+        cond_im = self.process_im(self.load_im(os.path.join(filename, 'cannyedge_render', index_cond + '.png')))
+        # bug was in conditioning
+        
         target_RT = np.load(os.path.join(filename, 'annotation', index_target + ".npy"), allow_pickle=True).item()['matrix_world']
         cond_RT = np.load(os.path.join(filename, 'annotation', index_cond + ".npy"), allow_pickle=True).item()['matrix_world']
 

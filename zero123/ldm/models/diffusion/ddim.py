@@ -210,6 +210,7 @@ class DDIMSampler(object):
             # else:
             #     c_in = torch.cat([unconditional_conditioning, c])
             # e_t_uncond, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(2)
+            # import ipdb; ipdb.set_trace()
             e_t = self.model.apply_model(x, t, c)
             # import ipdb; ipdb.set_trace()
             e_t_uncond = self.model.apply_model(x, t, unconditional_conditioning)

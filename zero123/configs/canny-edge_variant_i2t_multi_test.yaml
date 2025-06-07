@@ -136,7 +136,7 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 4
+    batch_size: 64
     num_workers: 8
     train:
       target: ldm.data.control.ObjaverseData
@@ -179,7 +179,7 @@ lightning:
 
   trainer:
     benchmark: True
-    max_steps: 2010000
+    max_steps: 50000
     check_val_every_n_epoch: 10
     num_sanity_val_steps: 0
   

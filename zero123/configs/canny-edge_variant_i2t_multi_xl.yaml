@@ -136,7 +136,7 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 8
+    batch_size: 64
     num_workers: 8
     train:
       target: ldm.data.control.ObjaverseData
@@ -144,7 +144,7 @@ data:
         root_dir: "/workspace/data/3ddst/train"
         txt_path: "/workspace/code/3DAnything/zero123/configs/train.txt"
         caption_path: "/workspace/code/3DAnything/debug/data/captions.csv"
-        patch_size: 512
+        patch_size: 256
 
     validation:
       target: ldm.data.control.ObjaverseData
@@ -152,7 +152,7 @@ data:
         root_dir: "/workspace/data/3ddst/train"
         txt_path: "/workspace/code/3DAnything/zero123/configs/val.txt"
         caption_path: "/workspace/code/3DAnything/debug/data/captions.csv"
-        patch_size: 512
+        patch_size: 256
 
 lightning:
   callbacks:
@@ -160,7 +160,7 @@ lightning:
       target: main.ImageLogger
       params:
         batch_frequency: 500
-        max_images: 4
+        max_images: 16
         increase_log_steps: False
         log_first_step: True
         log_images_kwargs:
@@ -186,5 +186,5 @@ lightning:
 pre_control:
   path:
     sd: /workspace/weight/diffuse/stable-diffusion-v-1-4-original/sd-v1-4.ckpt
-    pose: /workspace/weight/diffuse/zero123-weights/165000.ckpt
+    pose: /workspace/weight/diffuse/zero123-weights/zero123-xl.ckpt
     canny: "/workspace/weight/diffuse/ControlNet/models/control_sd15_canny.pth"

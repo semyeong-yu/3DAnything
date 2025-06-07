@@ -79,6 +79,7 @@ class DDPM(pl.LightningModule):
                  ucg_training=None,
                  reset_ema=False,
                  reset_num_ema_updates=False,
+                 uncond=None,
                  ):
         super().__init__()
         assert parameterization in ["eps", "x0", "v"], 'currently only supporting "eps" and "x0" and "v"'
@@ -772,13 +773,12 @@ class LatentDiffusion(DDPM):
         
         # 여기 분석하기
         x = super().get_input(batch, k)
-        num_B = x.shape[0]
+        num_B = min(x.shape[0], bs) if bs is not None else x.shape[0]
         # TODO 보다보니 T로 conditioning을 하는 부분이 없는데?
         T = batch['T'].to(memory_format=torch.contiguous_format).float()
         
-        if bs is not None:
-            x = x[:bs]
-            T = T[:bs].to(self.device)
+        x = x[:num_B]
+        T = T[:num_B].to(self.device)
 
         x = x.to(self.device)  # device transfer
         encoder_posterior = self.encode_first_stage(x)
@@ -796,12 +796,12 @@ class LatentDiffusion(DDPM):
         else:
             xc = super().get_input(batch, cond_key).to(self.device)
         # xc 어떻게 construct 되는가?
-        if bs is not None:
-            xc = xc[:bs]
+        xc = xc[:num_B]
         cond = {}
+        
 
         # To support classifier-free guidance, randomly drop out only text conditioning 5%, only image conditioning 5%, and both 5%.
-        random = torch.rand(x.size(0), device=x.device)
+        random = torch.rand(num_B, device=x.device)
         prompt_mask = rearrange(random < 2 * uncond, "n -> n 1 1")
         # prompt_mask = rearrange(random < 2 * uncond, "n -> n 1")  # for image 
         input_mask = 1 - rearrange((random >= uncond).float() * (random < 3 * uncond).float(), "n -> n 1 1 1")
@@ -826,11 +826,13 @@ class LatentDiffusion(DDPM):
             # text와 pose가 무조건 존재하는 conditioning으로 간주를 해야 겠다.
             # 그리고 여기 부분에서 positional signal을 늘이는 방법으로도 실험을 해야될 거 같은데
             # cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb), T[:, None, :].repeat(1, text_len, 1)], dim=-1))]  # explicitly for zero123 control net
-            cond["c_text_pose"] = [self.cc_projection(torch.cat([clip_emb, T[:, None, :].repeat(1, text_len, 1)], dim=-1))]  # explicitly for zero123 control net
+            cond["c_text_pose"] = self.cc_projection(torch.cat([clip_emb, T[:, None, :].repeat(1, text_len, 1)], dim=-1))  # explicitly for zero123 control net
+            # 애초에 tensor 입력을 주었어야 하는데
             # [64, 77, 768], [64, 1, 4]
             
             # TODO: hard coded here
             cond["canny"] = super().get_input(batch, "canny").to(self.device)  # canny edge map
+            cond["canny"] = cond["canny"][:num_B]  # [64 - max batch라서 오류 발생, 1, 256, 256]
             
             
         # cond["c_concat"] = [input_mask * self.encode_first_stage((xc.to(self.device))).mode().detach()]
