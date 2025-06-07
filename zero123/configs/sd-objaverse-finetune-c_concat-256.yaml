@@ -12,7 +12,7 @@ model:
     image_size: 32
     channels: 4
     cond_stage_trainable: false   # Note: different from the one we trained before
-    conditioning_key: hybrid
+    conditioning_key: hybrid  # 여기
     monitor: val/loss_simple_ema
     scale_factor: 0.18215
 

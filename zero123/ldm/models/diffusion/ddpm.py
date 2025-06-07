@@ -765,6 +765,7 @@ class LatentDiffusion(DDPM):
 
     
     @torch.no_grad()
+    # uncond도 실험 요소이다.
     def get_input(self, batch, k, return_first_stage_outputs=False,
                   cond_key=None, return_original_cond=False, bs=None, uncond=0.05):
         # c_concat -> img / c_crossattn -> text (generated from image) + pose
@@ -822,7 +823,10 @@ class LatentDiffusion(DDPM):
             # cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]  # explicitly for zero123 control net
             text_len = clip_emb.shape[1]
             
-            cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb), T[:, None, :].repeat(1, text_len, 1)], dim=-1))]  # explicitly for zero123 control net
+            # text와 pose가 무조건 존재하는 conditioning으로 간주를 해야 겠다.
+            # 그리고 여기 부분에서 positional signal을 늘이는 방법으로도 실험을 해야될 거 같은데
+            # cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb), T[:, None, :].repeat(1, text_len, 1)], dim=-1))]  # explicitly for zero123 control net
+            cond["c_text_pose"] = [self.cc_projection(torch.cat([clip_emb, T[:, None, :].repeat(1, text_len, 1)], dim=-1))]  # explicitly for zero123 control net
             # [64, 77, 768], [64, 1, 4]
             
             # TODO: hard coded here
@@ -1127,7 +1131,7 @@ class LatentDiffusion(DDPM):
     def p_mean_variance(self, x, c, t, clip_denoised: bool, return_codebook_ids=False, quantize_denoised=False,
                         return_x0=False, score_corrector=None, corrector_kwargs=None):
         t_in = t
-        model_out = self.apply_model(x, t_in, c, return_ids=return_codebook_ids)
+        model_out = self.apply_model(x, t_in, c, return_ids=return_codebook_ids)  # noise estimator
 
         if score_corrector is not None:
             assert self.parameterization == "eps"
@@ -1156,6 +1160,7 @@ class LatentDiffusion(DDPM):
         else:
             return model_mean, posterior_variance, posterior_log_variance
 
+    # NOTE 가장 근원이 되는 함수
     @torch.no_grad()
     def p_sample(self, x, c, t, clip_denoised=False, repeat_noise=False,
                  return_codebook_ids=False, quantize_denoised=False, return_x0=False,
@@ -1344,6 +1349,7 @@ class LatentDiffusion(DDPM):
             raise NotImplementedError()
         c = repeat(c, '1 ... -> b ...', b=batch_size).to(self.device)
         cond = {}
+        # NOTE crossattn과 concat이 의미하는 바에 대해서 잘 알아야 겠다.
         cond["c_crossattn"] = [c]
         cond["c_concat"] = [torch.zeros([batch_size, 4, image_size // 8, image_size // 8]).to(self.device)]
         return cond
@@ -1424,7 +1430,7 @@ class LatentDiffusion(DDPM):
                 log["samples_x0_quantized"] = x_samples
 
         if unconditional_guidance_scale > 1.0:
-            # TODO 여기도 까볼 필요가 있다.
+            # TODO 여기도 까볼 필요가 있다. 매우 중요하다.
             uc = self.get_unconditional_conditioning(N, unconditional_guidance_label, image_size=x.shape[-1])
             # uc = torch.zeros_like(c)
             with ema_scope("Sampling with classifier-free guidance"):
@@ -1551,7 +1557,9 @@ class DiffusionWrapper(pl.LightningModule):
             cc = torch.cat(c_crossattn, 1)
             out = self.diffusion_model(x, t, context=cc)
         elif self.conditioning_key == 'hybrid':
-            # TODO
+            # NOTE noise와 pose 정보를 통해서 한번에 conditioning 하기 위한 부분이었다.
+            # c_concat은 noise와 conditioning 정보를 concatenate해서 input으로 사용한 것이다.
+            # context는 attention을 통해서 conditioning을 하는 것이고
             xc = torch.cat([x] + c_concat, dim=1)
             cc = torch.cat(c_crossattn, 1)
             out = self.diffusion_model(xc, t, context=cc)

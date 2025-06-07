@@ -188,26 +188,32 @@ class DDIMSampler(object):
                       dynamic_threshold=None):
         b, *_, device = *x.shape, x.device
 
+        
         if unconditional_conditioning is None or unconditional_guidance_scale == 1.:
             e_t = self.model.apply_model(x, t, c)
         else:
-            x_in = torch.cat([x] * 2)
-            t_in = torch.cat([t] * 2)
-            if isinstance(c, dict):
-                assert isinstance(unconditional_conditioning, dict)
-                c_in = dict()
-                for k in c:
-                    if isinstance(c[k], list):
-                        c_in[k] = [torch.cat([
-                            unconditional_conditioning[k][i],
-                            c[k][i]]) for i in range(len(c[k]))]
-                    else:
-                        c_in[k] = torch.cat([
-                                unconditional_conditioning[k],
-                                c[k]])
-            else:
-                c_in = torch.cat([unconditional_conditioning, c])
-            e_t_uncond, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(2)
+            # x_in = torch.cat([x] * 2)
+            # t_in = torch.cat([t] * 2)
+            # # import ipdb; ipdb.set_trace()
+            # if isinstance(c, dict):
+            #     assert isinstance(unconditional_conditioning, dict)
+            #     c_in = dict()
+            #     for k in c:
+            #         if isinstance(c[k], list):
+            #             c_in[k] = [torch.cat([
+            #                 unconditional_conditioning[k][i],
+            #                 c[k][i]]) for i in range(len(c[k]))]
+            #         else:
+            #             c_in[k] = torch.cat([
+            #                     unconditional_conditioning[k],
+            #                     c[k]])
+            # else:
+            #     c_in = torch.cat([unconditional_conditioning, c])
+            # e_t_uncond, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(2)
+            e_t = self.model.apply_model(x, t, c)
+            import ipdb; ipdb.set_trace()
+            e_t_uncond = self.model.apply_model(x, t, unconditional_conditioning)
+            
             e_t = e_t_uncond + unconditional_guidance_scale * (e_t - e_t_uncond)
 
         if score_corrector is not None:

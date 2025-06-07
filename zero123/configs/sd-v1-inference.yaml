@@ -12,7 +12,7 @@ model:
     image_size: 64
     channels: 4
     cond_stage_trainable: false   # Note: different from the one we trained before
-    conditioning_key: crossattn
+    conditioning_key: crossattn  # 여기
     monitor: val/loss_simple_ema
     scale_factor: 0.18215
     use_ema: False
