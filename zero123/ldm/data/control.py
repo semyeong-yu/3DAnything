@@ -78,7 +78,7 @@ class ObjaverseData(Dataset):
     # def load_im(self, path, color):
     def load_im(self, path):
         img = plt.imread(path)
-        # img[img[:,:,-1] == 0.] = color # fix empty pixels
+        img[img[:,:,-1] == 0.] = [1., 1., 1., 1.] # fix empty pixels
         img = Image.fromarray(np.uint8(img[:,:,:3]*255.))
         return img
     
@@ -97,6 +97,7 @@ class ObjaverseData(Dataset):
         color = [1., 1., 1., 1.]
         target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target)))
         cond_im = self.process_im(self.load_im(os.path.join(filename, 'cannyedge_render', '%03d.png' % index_cond)))
+        # cond_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_cond)))
         cond_text = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_cond)))
         # target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target), color))
         # cond_im = self.process_im(self.load_im(os.path.join(filename, '%03d.png' % index_cond), color))

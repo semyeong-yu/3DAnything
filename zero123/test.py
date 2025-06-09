@@ -159,6 +159,7 @@ if __name__ == "__main__":
                 for index in range(samples.shape[0]):
                     save_tensor(samples[index], os.path.join(exp_path, f'{index}_sample'))
                     save_tensor(target_img[index], os.path.join(exp_path, f'{index}_target'))
+                    save_tensor(cond_img[index], os.path.join(exp_path, f'{index}_cond'))
                 break
     
     
