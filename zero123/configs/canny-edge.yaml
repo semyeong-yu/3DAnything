@@ -101,7 +101,7 @@ lightning:
     image_logger:
       target: main.ImageLogger
       params:
-        batch_frequency: 500
+        batch_frequency: 1000
         max_images: 16
         increase_log_steps: False
         log_first_step: True
@@ -117,10 +117,10 @@ lightning:
   modelcheckpoint:
     target: pytorch_lightning.callbacks.ModelCheckpoint
     params:
-      every_n_train_steps: 1000
+      every_n_train_steps: 5000
 
   trainer:
     benchmark: True
-    max_steps: 50100
+    max_steps: 200100
     check_val_every_n_epoch: 10
     limit_val_batches: 1

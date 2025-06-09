@@ -11,6 +11,9 @@ import torch
 import torch.nn as nn
 import random
 from ldm.util import *
+from ldm.data.control import ObjaverseData, ObjaverseDataNormal
+from torch.utils.data import DataLoader
+from einops import rearrange
 
 def minus_one_to_one(x):
     return 2 * x - 1.0
@@ -72,16 +75,16 @@ if __name__ == "__main__":
         type=str,
         nargs="?",
     )
-    parser.add_argument(
-        "--data_root",
-        type=str,
-        nargs="?",
-    )
-    parser.add_argument(
-        "--scene_txt",
-        type=str,
-        nargs="?",
-    )
+    # parser.add_argument(
+    #     "--data_root",
+    #     type=str,
+    #     nargs="?",
+    # )
+    # parser.add_argument(
+    #     "--scene_txt",
+    #     type=str,
+    #     nargs="?",
+    # )
     parser.add_argument(
         "--ckpt",
         type=str,
@@ -115,10 +118,10 @@ if __name__ == "__main__":
     
     config = OmegaConf.load(opt.config)
     
-    scene_txt = opt.scene_txt
-    with open(scene_txt, "r") as f:
-        scene_names = f.read().splitlines()
-    data_dir = opt.data_root
+    # scene_txt = opt.scene_txt
+    # with open(scene_txt, "r") as f:
+    #     scene_names = f.read().splitlines()
+    # data_dir = opt.data_root
     
     exp_path = os.path.join("results", opt.exp_name)
     os.makedirs(exp_path, exist_ok=True)
@@ -128,15 +131,57 @@ if __name__ == "__main__":
     model = model.to(device)
     OmegaConf.save(config=config, f=os.path.join(exp_path, 'config.yaml'))
     
+    dataset = instantiate_from_config(config=config.data.params.validation)
+    dataloader = DataLoader(dataset, batch_size=opt.batch_size)
+    
     with torch.no_grad():
-        for scene_name in tqdm(scene_names):
-            image_path = os.path.join(data_dir, scene_name)
-            output_path = os.path.join(exp_path, scene_name)
-            os.makedirs(output_path, exist_ok=True)
+        with model.ema_scope():
+            for index, batch in enumerate(dataloader):
+                cond = {}
+                target_img = batch["image_target"].to(device)
+                cond_img = batch["image_cond"].to(device)
+                T = batch["T"].to(device)
+                target_img = rearrange(target_img, 'b h w c -> b c h w')
+                cond_img = rearrange(cond_img, 'b h w c -> b c h w')
+                
+                clip_emb = model.get_learned_conditioning(cond_img)
+                # cond["c_crossattn"] = [model.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]
+                cond["c_crossattn"] = [model.cc_projection(torch.cat([clip_emb[:, None, :], T[:, None, :]], dim=-1))]
+                cond["c_concat"] = [model.encode_first_stage((cond_img)).mode()]
+                
+                diffusion_samples, _ = model.sample_log(cond=cond,
+                                              batch_size=opt.batch_size,
+                                              ddim=True,
+                                              ddim_steps=opt.ddim_steps,
+                                              eta=0.)
+                
+                samples = model.decode_first_stage(diffusion_samples)
+                for index in range(samples.shape[0]):
+                    save_tensor(samples[index], os.path.join(exp_path, f'{index}_sample'))
+                    save_tensor(target_img[index], os.path.join(exp_path, f'{index}_target'))
+                break
+    
+    
+    # with torch.no_grad():
+    #     for scene_name in tqdm(scene_names):
+    #         image_path = os.path.join(data_dir, scene_name)
+    #         output_path = os.path.join(exp_path, scene_name)
+    #         os.makedirs(output_path, exist_ok=True)
             
-            view_num = len(os.listdir(f'{image_path}/annotation'))
-            index_target, index_cond = random.sample(range(view_num), 2)
+    #         view_num = len(os.listdir(f'{image_path}/annotation'))
+    #         index_target, index_cond = random.sample(range(view_num), 2)
+            
+    #         target_img = imageio.imread(os.path.join(image_path, 'image_render', '%03d.png'%index_target))
+    #         target_img = target_img[None].transpose(0,3,1,2)
+    #         target_img = torch.from_numpy(target_img)
+    #         cond_img = imageio.imread(os.path.join(image_path, 'cannyedge_render', '%03d.png'%index_cond))
+    #         cond_img = target_img[None].transpose(0,3,1,2)
+    #         cond_img = torch.from_numpy(cond_img)
+            
+    #         target_RT = np.load(os.path.join(image_path, 'annotation', '%03d.npy'%index_target), allow_pickle=True).item()['matrix_world']
+    #         cond_RT = np.load(os.path.join(image_path, 'annotation', '%03d.npy' % index_cond), allow_pickle=True).item()['matrix_world']
+            
+    #         rel_RT = get_T(target_RT, cond_RT)
             
             
-            cond_img = imageio.imread(os.path.join(image_path, 'image_render', '%03d.png'%index_cond))
             
