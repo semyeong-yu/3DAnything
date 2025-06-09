@@ -78,7 +78,7 @@ class ObjaverseData(Dataset):
     # def load_im(self, path, color):
     def load_im(self, path):
         img = plt.imread(path)
-        img[img[:,:,-1] == 0.] = [1., 1., 1., 1.] # fix empty pixels
+        # img[img[:,:,-1] == 0.] = [1., 1., 1., 1.] # fix empty pixels
         img = Image.fromarray(np.uint8(img[:,:,:3]*255.))
         return img
     
