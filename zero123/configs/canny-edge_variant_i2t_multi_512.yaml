@@ -18,7 +18,7 @@ model:
     control_key: 
     - pose
     - canny
-    image_size: 32  # 여기 다름 절반임...
+    image_size: 64  # 여기 다름 절반임...
     channels: 4
     cond_stage_trainable: false
     conditioning_key: hybrid
@@ -49,7 +49,7 @@ model:
     # for canny edge embedding
     - target: ldm.modules.diffusionmodules.controlnetmodel.ControlNet
       params:
-        image_size: 32 # unused
+        image_size: 64 # unused
         in_channels: 4
         hint_channels: 3
         model_channels: 320
@@ -66,7 +66,7 @@ model:
     # for pose embedding
     - target: ldm.modules.diffusionmodules.controlnetmodel.ControlNet
       params:
-        image_size: 32 # unused
+        image_size: 64 # unused
         in_channels: 4
         hint_channels: 3
         model_channels: 320
@@ -87,7 +87,7 @@ model:
       # TODO: 여기는 T2I 1.4 version 그대로 가져오기
       target: ldm.modules.diffusionmodules.controlnetmodel.ControlledUnetModel
       params:
-        image_size: 32 # unused
+        image_size: 64 # unused
         in_channels: 4
         out_channels: 4
         model_channels: 320
@@ -111,7 +111,7 @@ model:
         ddconfig:
           double_z: true
           z_channels: 4
-          resolution: 256
+          resolution: 512
           in_channels: 3
           out_ch: 3
           ch: 128

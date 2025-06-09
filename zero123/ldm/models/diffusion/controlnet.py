@@ -61,29 +61,6 @@ class MultiControlNet(LatentDiffusion):
     def apply_model(self, x_noisy, t, cond, *args, **kwargs):
         assert isinstance(cond, dict)
         diffusion_model = self.model.diffusion_model # free from wrapper
-
-        # control of langauge
-        # c_crossattn이 어떻게 construct 되는 지 확인 필요
-        # TODO DDPM class로 hack을 해야한다.
-        # TODO -> DONE 입력 loader 또한 변형을 해주어야 한다.
-        # cond_txt = torch.cat(cond['c_crossattn'], 1)
-        # import ipdb; ipdb.set_trace()
-        
-        # pose controller에는 text와 pose 정보가 conditioning을 하되, hint는 None으로 한다.
-        # 그리하여 initial noise와 vanilla text embedding with pose injection 정보를 embedding하는 network가 되도록 해야 한다.
-        # 다만 이렇기 때문에 pose 정보를 sinusoidal expansion하고 non-linear encoding scheme까지 도입을 할 수는 있을 거 같다.
-        
-        # canny edge controller에는 hint로 canny edge map과 vanilla text embedding를 넣어주도록 한다.
-
-        # 그리고 vanilla LDM에 대해서는 vanilla text만을 이용해서 stable diffusion의 능력을 그대로 활용하도록 한다.
-        
-        # zero convolution을 zero initialize를 꼭해서 diffusion이 망가지지 않도록 한다.
-        
-        # control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
-        # control = [c * scale for c, scale in zip(control, self.control_scales)]
-        
-        # TODO 여기 바꿔주기
-        # 어떻게 control을 composition할 지도 중요한 issue이다.
         
         if "c_null_txt" in cond:
             # null condition diffusion
@@ -91,6 +68,7 @@ class MultiControlNet(LatentDiffusion):
             eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=None, only_mid_control=self.only_mid_control)    
         
         else:
+            
             cond_txt = cond['c_text']
             control_list = []
             for c_key, c_model in zip(self.control_key_list, self.control_model_list):
@@ -101,9 +79,7 @@ class MultiControlNet(LatentDiffusion):
                     control_list.append(
                         c_model(x=x_noisy, hint=None, timesteps=t, context=cond['c_text_pose'])
                     )
-                    # 여기 positional embedding signal을 엄청 늘려 버려야 겠다.
                 elif c_key == 'canny':
-                    # 원본 controlnet에서는 convolution layer로 latent space로 mapping하는 데 여기 코드 구현 좀 봐야겠다.
                     canny_image_embeding = cond["canny"]
                     control_list.append(
                         c_model(x=x_noisy, hint=canny_image_embeding, timesteps=t, context=cond_txt)
@@ -114,10 +90,6 @@ class MultiControlNet(LatentDiffusion):
                 control.append(
                     control_list[0][ctr_idx] * ctr_scale + control_list[1][ctr_idx] * ctr_scale 
                 )
-
-            # control signal added
-            # 여기다. 그런데, conntrol signamling을 할 때, 귀찮아서 DiffusionWrapper의 forward를 쓰지 않고 우회해서 하고 있다.
-            # 따라서 input만 잘 정의해주면 이제 거의 문제가 끝나 가는 듯?
             eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
 
         return eps
@@ -125,24 +97,6 @@ class MultiControlNet(LatentDiffusion):
     # NOTE T2I image generation이므로 여기에 쓸 unconditional signal은 null text가 되어야 한다.
     @torch.no_grad()
     def get_unconditional_conditioning(self, batch_size):
-        # if null_label is not None:
-        #     xc = null_label
-        #     if isinstance(xc, ListConfig):
-        #         xc = list(xc)
-        #     if isinstance(xc, dict) or isinstance(xc, list):
-        #         c = self.get_learned_conditioning(xc)
-        #     else:
-        #         if hasattr(xc, "to"):
-        #             xc = xc.to(self.device)
-        #         c = self.get_learned_conditioning(xc)
-        # else:
-        #     # todo: get null label from cond_stage_model
-        #     raise NotImplementedError()
-        # c = repeat(c, '1 ... -> b ...', b=batch_size).to(self.device)
-        # cond = {}
-        # cond["c_crossattn"] = [c]
-        # cond["c_concat"] = [torch.zeros([batch_size, 4, image_size // 8, image_size // 8]).to(self.device)]
-        # # cond["c_control"] = [torch.zeros([batch_size, 4, image_size // 8, image_size // 8]).to(self.device)]
         cond = {}
         cond["c_null_txt"] = self.get_learned_conditioning([""]).repeat(batch_size, 1, 1)
         
@@ -192,13 +146,6 @@ class MultiControlNet(LatentDiffusion):
                 log["denoise_row"] = denoise_grid
 
         if unconditional_guidance_scale > 1.0:
-            # T2I image generation이므로 여기에 쓸 unconditional signal은 null text가 되어야 한다.
-            
-            # cross attention시에 null text를 넣어주되, control net signal은 여전히 pose 정보는 들어가야만 한다.
-            # 다만 걱정되는 것이 spatial control signal은 어떻게 해야 할 지에 대한 문제이다.
-            
-            # text pose만 null embedding으로 generation하면 될 것 같기는 한데
-            # control signal은 어떻게 처리될 지 모르겠다.
             uc_full = self.get_unconditional_conditioning(batch_size=N)
             
             samples_cfg, _ = self.sample_log(cond=c,
@@ -215,18 +162,6 @@ class MultiControlNet(LatentDiffusion):
         return log
 
     def configure_optimizers(self):
-        """
-        여기가 핵심이다.
-        1. 오직 controlnet의 parameter만을 update를 해야한다.
-        
-        model.first_stage_model: FREEZE
-        model.model.diffusion_model: FREEZE
-        model.cond_stage_model: FREEZE
-        
-        model.control_model: learnable
-        나는 control signal을 한번에 두개에서 부여 해야 한다.
-        
-        """
         lr = self.learning_rate
         params = list(self.control_model_list.parameters())
         if not self.sd_locked:
