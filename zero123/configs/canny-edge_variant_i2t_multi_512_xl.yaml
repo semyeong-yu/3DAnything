@@ -2,7 +2,7 @@
 # 먼저 checkpoint를 불러올 때, stable diffusion t2i를 불러오고 controlNet을 2개로 하는 전략을 취해야 겠다.
 model:
   base_learning_rate: 1.0e-05
-  target: ldm.models.diffusion.controlnet.MultiControlNet  # NOTE 여기 수정 필요
+  target: ldm.models.diffusion.controlnet.MultiModalControlNet  # NOTE 여기 수정 필요
   params:
     linear_start: 0.00085
     linear_end: 0.0120
@@ -79,9 +79,7 @@ model:
         context_dim: 768
         use_checkpoint: True
         legacy: False
-      
-      
-       
+
     unet_config:
       # NOTE: 이거 unet 까기
       # TODO: 여기는 T2I 1.4 version 그대로 가져오기

@@ -19,7 +19,7 @@ from tqdm import tqdm
 from torchvision.utils import make_grid
 # from pytorch_lightning.utilities.distributed import rank_zero_only
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
-from omegaconf import ListConfig
+from omegaconf import ListConfig, DictConfig
 
 from ldm.util import log_txt_as_img, exists, default, ismap, isimage, mean_flat, count_params, instantiate_from_config
 from ldm.modules.ema import LitEma
@@ -562,7 +562,7 @@ class LatentDiffusion(DDPM):
         else:
             self.register_buffer('scale_factor', torch.tensor(scale_factor))
         self.instantiate_first_stage(first_stage_config)
-        self.instantiate_cond_stage(cond_stage_config)
+        self.instantiate_cond_stage(cond_stage_config)  # 여기 conditioner
         self.cond_stage_forward = cond_stage_forward
 
         # construct linear projection layer for concatenating image CLIP embedding and RT
@@ -616,9 +616,10 @@ class LatentDiffusion(DDPM):
         self.first_stage_model.train = disabled_train
         for param in self.first_stage_model.parameters():
             param.requires_grad = False
-
+    
+    # 여기 conditioner
     def instantiate_cond_stage(self, config):
-        if not self.cond_stage_trainable:
+        if not self.cond_stage_trainable:  # 일단 여기
             if config == "__is_first_stage__":
                 print("Using first stage also as cond stage.")
                 self.cond_stage_model = self.first_stage_model
@@ -627,11 +628,24 @@ class LatentDiffusion(DDPM):
                 self.cond_stage_model = None
                 # self.be_unconditional = True
             else:
-                model = instantiate_from_config(config)
-                self.cond_stage_model = model.eval()
-                self.cond_stage_model.train = disabled_train
-                for param in self.cond_stage_model.parameters():
-                    param.requires_grad = False
+                num_models = config.get("num_models", 1)
+                if num_models == 2:
+                    self.cond_stage_model = nn.ModuleDict()
+                    for key, value in config.models.items():
+                        _model = instantiate_from_config(value)
+                        self.cond_stage_model[key] = _model.eval()
+                        self.cond_stage_model[key].train = disabled_train
+                        for param in self.cond_stage_model[key].parameters():
+                            param.requires_grad = False
+                elif num_models == 1:
+                    model = instantiate_from_config(config)
+                    self.cond_stage_model = model.eval()
+                    self.cond_stage_model.train = disabled_train
+                    for param in self.cond_stage_model.parameters():
+                        param.requires_grad = False
+                else:
+                    raise NotImplementedError(f"num_models {num_models} not yet implemented")
+                
         else:
             assert config != '__is_first_stage__'
             assert config != '__is_unconditional__'
@@ -659,14 +673,17 @@ class LatentDiffusion(DDPM):
             raise NotImplementedError(f"encoder_posterior of type '{type(encoder_posterior)}' not yet implemented")
         return self.scale_factor * z
 
-    def get_learned_conditioning(self, c):
+    def get_learned_conditioning(self, c, modality:str = None):
         if self.cond_stage_forward is None:
             # if hasattr(self.cond_stage_model, 'encode') and callable(self.cond_stage_model.encode):
             #     c = self.cond_stage_model.encode(c)
             #     if isinstance(c, DiagonalGaussianDistribution):
             #         c = c.mode()
             # else:
-            c = self.cond_stage_model(c)
+            if modality is not None:
+                c = getattr(self.cond_stage_model, modality)(c)
+            else:
+                c = self.cond_stage_model(c)
             # 그러면 text embedding은 잘 encoding은 되는 것으로 봉니다.
             # 아마 여기를 수정된듯 branch sh
         else:
@@ -807,33 +824,40 @@ class LatentDiffusion(DDPM):
         
         # import ipdb; ipdb.set_trace()
 
-        null_prompt = self.get_learned_conditioning([""]).repeat(num_B, 1, 1)  # text embedding을 사용하기 때문에 이게 맞아유
         # z.shape: [8, 4, 64, 64]; c.shape: [8, 1, 768]
         # print('=========== xc shape ===========', xc.shape)
         # 여기서 null text prompt랑 image null prompt를 만들어서, pretrained 정보를 이용할 때는 T2I를 
         with torch.enable_grad():
-            # NOTE 여기 clip embedding이 text 기반인지 image 기반 인지 알아야함, 역시 image 기반이였다. (image -> latent)
-            
-            clip_emb = self.get_learned_conditioning(xc).detach()
-            # null_prompt = torch.zeros_like(clip_emb)
-            
-            # cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]
-            cond["c_text"] = torch.where(prompt_mask, null_prompt, clip_emb)
-            
-            # cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]  # explicitly for zero123 control net
-            text_len = clip_emb.shape[1]
-            
-            # text와 pose가 무조건 존재하는 conditioning으로 간주를 해야 겠다.
-            # 그리고 여기 부분에서 positional signal을 늘이는 방법으로도 실험을 해야될 거 같은데
-            # cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb), T[:, None, :].repeat(1, text_len, 1)], dim=-1))]  # explicitly for zero123 control net
-            cond["c_text_pose"] = self.cc_projection(torch.cat([clip_emb, T[:, None, :].repeat(1, text_len, 1)], dim=-1))  # explicitly for zero123 control net
-            # 애초에 tensor 입력을 주었어야 하는데
-            # [64, 77, 768], [64, 1, 4]
             
             # TODO: hard coded here
             cond["canny"] = super().get_input(batch, "canny").to(self.device)  # canny edge map
             cond["canny"] = cond["canny"][:num_B]  # [64 - max batch라서 오류 발생, 1, 256, 256]
             
+            
+            # NOTE 여기 clip embedding이 text 기반인지 image 기반 인지 알아야함, 역시 image 기반이였다. (image -> latent)
+
+            null_txt_prompt = self.get_learned_conditioning([""], modality="txt").repeat(num_B, 1, 1)  # text embedding을 사용하기 때문에 이게 맞아유
+            clip_txt_emb = self.get_learned_conditioning(xc, modality="txt").detach()
+            # null_prompt = torch.zeros_like(clip_emb)
+            
+            clip_img_emb = self.get_learned_conditioning(cond["canny"], modality="image").detach()
+            
+            # cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]
+            cond["c_text"] = torch.where(prompt_mask, null_txt_prompt, clip_txt_emb)
+            
+            # cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]  # explicitly for zero123 control net
+            text_len = clip_txt_emb.shape[1]
+            
+            # text와 pose가 무조건 존재하는 conditioning으로 간주를 해야 겠다.
+            # 그리고 여기 부분에서 positional signal을 늘이는 방법으로도 실험을 해야될 거 같은데
+            # cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb), T[:, None, :].repeat(1, text_len, 1)], dim=-1))]  # explicitly for zero123 control net
+            # cond["c_text_pose"] = self.cc_projection(torch.cat([clip_txt_emb, T[:, None, :].repeat(1, text_len, 1)], dim=-1))  # explicitly for zero123 control net
+            # import ipdb; ipdb.set_trace()
+            cond["c_pose"] = self.cc_projection(
+                torch.cat([clip_img_emb[:, None, :], T[:, None, :]], dim=-1)
+            )
+            # 애초에 tensor 입력을 주었어야 하는데
+            # [64, 77, 768], [64, 1, 4]
             
         # cond["c_concat"] = [input_mask * self.encode_first_stage((xc.to(self.device))).mode().detach()]
         # cond["c_concat"] = [input_mask * xc.to(self.device)]
