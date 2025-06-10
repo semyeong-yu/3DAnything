@@ -798,8 +798,8 @@ class LatentDiffusion(DDPM):
             # null_prompt = self.get_learned_conditioning([""]).detach(
             null_prompt = torch.zeros_like(clip_emb)
             cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]
-        cond["c_concat"] = [input_mask * self.encode_first_stage((xc.to(self.device))).mode().detach()]
-        # cond["c_concat"] = [input_mask * xc.to(self.device)] # CONTROL
+        # cond["c_concat"] = [input_mask * self.encode_first_stage((xc.to(self.device))).mode().detach()]
+        cond["c_concat"] = [input_mask * xc.to(self.device)] # CONTROL
         out = [z, cond]
         if return_first_stage_outputs:
             xrec = self.decode_first_stage(z)
