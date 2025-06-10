@@ -101,8 +101,12 @@ class ObjaverseData(Dataset):
         cond_text = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_cond)))
         # target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target), color))
         # cond_im = self.process_im(self.load_im(os.path.join(filename, '%03d.png' % index_cond), color))
-        target_RT = np.load(os.path.join(filename, 'annotation', '%03d.npy' % index_target), allow_pickle=True).item()['matrix_world']
-        cond_RT = np.load(os.path.join(filename, 'annotation', '%03d.npy' % index_cond), allow_pickle=True).item()['matrix_world']
+        
+        target_RT = np.linalg.inv(np.load(os.path.join(filename, 'annotation', '%03d.npy' % index_target), allow_pickle=True).item()['matrix_world'])
+        cond_RT = np.linalg.inv(np.load(os.path.join(filename, 'annotation', '%03d.npy' % index_cond), allow_pickle=True).item()['matrix_world'])
+        
+        # target_RT = np.load(os.path.join(filename, 'annotation', '%03d.npy' % index_target), allow_pickle=True).item()['matrix_world']
+        # cond_RT = np.load(os.path.join(filename, 'annotation', '%03d.npy' % index_cond), allow_pickle=True).item()['matrix_world']
 
         data["image_target"] = target_im
         data["image_cond"] = cond_im
