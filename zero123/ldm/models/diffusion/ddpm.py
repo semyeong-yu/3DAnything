@@ -530,6 +530,7 @@ class LatentDiffusion(DDPM):
                  cond_stage_config,
                  num_timesteps_cond=None,
                  cond_stage_key="image",
+                 text_stage_key="image",
                  cond_stage_trainable=False,
                  concat_mode=True,
                  cond_stage_forward=None,
@@ -537,6 +538,7 @@ class LatentDiffusion(DDPM):
                  scale_factor=1.0,
                  scale_by_std=False,
                  unet_trainable=True,
+                 use_rgb_clip=False,
                  *args, **kwargs):
         self.num_timesteps_cond = default(num_timesteps_cond, 1)
         self.scale_by_std = scale_by_std
@@ -552,7 +554,9 @@ class LatentDiffusion(DDPM):
         self.concat_mode = concat_mode
         self.cond_stage_trainable = cond_stage_trainable
         self.unet_trainable = unet_trainable
+        self.use_rgb_clip = use_rgb_clip
         self.cond_stage_key = cond_stage_key
+        self.text_stage_key = text_stage_key
         try:
             self.num_downs = len(first_stage_config.params.ddconfig.ch_mult) - 1
         except:
@@ -790,7 +794,6 @@ class LatentDiffusion(DDPM):
         # 여기 분석하기
         x = super().get_input(batch, k)
         num_B = min(x.shape[0], bs) if bs is not None else x.shape[0]
-        # TODO 보다보니 T로 conditioning을 하는 부분이 없는데?
         T = batch['T'].to(memory_format=torch.contiguous_format).float()
         
         x = x[:num_B]
@@ -806,15 +809,15 @@ class LatentDiffusion(DDPM):
         # NOTE z는 latent model에 넣어주기 위한 embedding, VAE에 의해서 encoding 됨
         
         cond_key = cond_key or self.cond_stage_key
-        # TODO dataloader 수정 필요
-        if cond_key == "txt":
-            xc = batch["txt"]
+        xc = super().get_input(batch, cond_key).to(self.device)
+        text_key = self.text_stage_key
+        if self.use_rgb_clip:
+            xt = super().get_input(batch, text_key).to(self.device)
         else:
-            xc = super().get_input(batch, cond_key).to(self.device)
-        # xc 어떻게 construct 되는가?
+            xt = xc
         xc = xc[:num_B]
+        xt = xt[:num_B]
         cond = {}
-        
 
         # To support classifier-free guidance, randomly drop out only text conditioning 5%, only image conditioning 5%, and both 5%.
         random = torch.rand(num_B, device=x.device)
@@ -828,51 +831,16 @@ class LatentDiffusion(DDPM):
         # print('=========== xc shape ===========', xc.shape)
         # 여기서 null text prompt랑 image null prompt를 만들어서, pretrained 정보를 이용할 때는 T2I를 
         with torch.enable_grad():
-            
-            # TODO: hard coded here
-            cond["canny"] = super().get_input(batch, "canny").to(self.device)  # canny edge map
-            cond["canny"] = cond["canny"][:num_B]  # [64 - max batch라서 오류 발생, 1, 256, 256]
-            
-            # NOTE 여기 clip embedding이 text 기반인지 image 기반 인지 알아야함, 역시 image 기반이였다. (image -> latent)
-
-            null_prompt = self.get_learned_conditioning([""], modality="image").repeat(num_B, 1, 1)  # text embedding을 사용하기 때문에 이게 맞아유
-            clip_txt_emb = self.get_learned_conditioning(xc, modality="txt").detach()
-            cond["c_text"] = clip_txt_emb
-            # null_prompt = torch.zeros_like(clip_emb)
-            
-            
-            # cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]
-            # cond["c_text"] = torch.where(prompt_mask, null_prompt, clip_txt_emb)
-            
-            # cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]  # explicitly for zero123 control net
-            text_len = clip_txt_emb.shape[1]
-            
-            # text와 pose가 무조건 존재하는 conditioning으로 간주를 해야 겠다.
-            # 그리고 여기 부분에서 positional signal을 늘이는 방법으로도 실험을 해야될 거 같은데
-            # cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb), T[:, None, :].repeat(1, text_len, 1)], dim=-1))]  # explicitly for zero123 control net
-            # cond["c_text_pose"] = self.cc_projection(torch.cat([clip_txt_emb, T[:, None, :].repeat(1, text_len, 1)], dim=-1))  # explicitly for zero123 control net
-            # import ipdb; ipdb.set_trace()
-            
-            # NOTE I2I conditioning
-            clip_img_emb = self.get_learned_conditioning(cond["canny"], modality="image").detach()
-            cond["canny_latent"] = input_mask * self.encode_first_stage(cond["canny"].to(self.device)).mode().detach()
-            
-            # import ipdb; ipdb.set_trace()
-            
-            cond["c_pose"] = self.cc_projection(
+            clip_emb = self.get_learned_conditioning(xt).detach()
+            cond["text"] = clip_emb[:, None, :]
+            null_prompt = torch.zeros_like(clip_emb[:, None, :])
+            cond["latent"] = input_mask * self.encode_first_stage((xc)).mode().detach()
+            cond["control"] = input_mask * xc
+            cond["pose"] = self.cc_projection(
                 torch.cat([torch.where(
-                    prompt_mask, null_prompt, clip_img_emb[:, None, :]
+                    prompt_mask, null_prompt, clip_emb[:, None, :]
                     ), T[:, None, :]], dim=-1)
             )
-            # cond["c_pose"] = self.cc_projection(
-            #     torch.cat([clip_img_emb[:, None, :], T[:, None, :]], dim=-1)
-            # )
-            # 애초에 tensor 입력을 주었어야 하는데
-            # [64, 77, 768], [64, 1, 4]
-            
-        # cond["c_concat"] = [input_mask * self.encode_first_stage((xc.to(self.device))).mode().detach()]
-        # cond["c_concat"] = [input_mask * xc.to(self.device)]
-        # 이거의 차이점이 어떻게 되는가?
         out = [z, cond]
         
         if return_first_stage_outputs:
