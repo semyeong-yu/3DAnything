@@ -87,7 +87,7 @@ class ControlLDM(LatentDiffusion):
         return cond
 
     @torch.no_grad()
-    def log_images(self, batch, N=4, n_row=2, sample=True, ddim_steps=200, ddim_eta=1.0, plot_denoise_rows=False, plot_diffusion_rows=False, unconditional_guidance_scale=9.0, unconditional_guidance_label=None, **kwargs):
+    def log_images(self, batch, N=4, n_row=2, sample=True, ddim_steps=50, ddim_eta=1.0, plot_denoise_rows=False, plot_diffusion_rows=False, unconditional_guidance_scale=9.0, unconditional_guidance_label=None, **kwargs):
         use_ddim = ddim_steps is not None
 
         log = dict()

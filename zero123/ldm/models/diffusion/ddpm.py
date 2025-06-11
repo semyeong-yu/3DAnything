@@ -534,6 +534,7 @@ class LatentDiffusion(DDPM):
                  scale_factor=1.0,
                  scale_by_std=False,
                  unet_trainable=True,
+                 use_img_in_clip=False,
                  *args, **kwargs):
         self.num_timesteps_cond = default(num_timesteps_cond, 1)
         self.scale_by_std = scale_by_std
@@ -570,6 +571,7 @@ class LatentDiffusion(DDPM):
         self.cc_projection.requires_grad_(True)
         
         self.clip_denoised = False
+        self.use_img_in_clip = use_img_in_clip
         # self.bbox_tokenizer = None
 
         self.restarted_from_ckpt = False
@@ -777,8 +779,10 @@ class LatentDiffusion(DDPM):
         cond_key = cond_key or self.cond_stage_key
         xc = super().get_input(batch, cond_key).to(self.device)
         text_key = self.text_stage_key
-        # xt = super().get_input(batch, text_key).to(self.device)
-        xt = xc
+        if self.use_img_in_clip:
+            xt = super().get_input(batch, text_key).to(self.device)
+        else:
+            xt = xc
         if bs is not None:
             xc = xc[:bs]
             xt = xt[:bs]
@@ -1310,7 +1314,7 @@ class LatentDiffusion(DDPM):
         return cond
 
     @torch.no_grad()
-    def log_images(self, batch, N=8, n_row=4, sample=True, ddim_steps=200, ddim_eta=1., return_keys=None,
+    def log_images(self, batch, N=8, n_row=4, sample=True, ddim_steps=50, ddim_eta=1., return_keys=None,
                    quantize_denoised=True, inpaint=True, plot_denoise_rows=False, plot_progressive_rows=True,
                    plot_diffusion_rows=True, unconditional_guidance_scale=1., unconditional_guidance_label=None,
                    use_ema_scope=True,

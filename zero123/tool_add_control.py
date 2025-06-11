@@ -38,8 +38,17 @@ if 'state_dict' in pretrained_weights:
     pretrained_weights = pretrained_weights['state_dict']
 
 scratch_dict = model.state_dict()
-
+        # orig_conv_weight = sd[f"{key_prefix}.weight"]
+        # orig_conv_bias = sd[f"{key_prefix}.bias"]
+        # modif_conv_weight = orig_conv_weight[:, 0:self.unet_in_channels, :, :]
+        # sd_new = sd
+        # for name, param in sd_new:
+        #     if name == f"{key_prefix}.weight":
+        #         sd_new[name] = modif_conv_weight
 target_dict = {}
+key_prefix = "input_blocks.0.0.weight"
+unet_in_channels = 4
+
 for k in scratch_dict.keys():
     is_control, name = get_node_name(k, 'control_')
     if is_control:
@@ -47,7 +56,11 @@ for k in scratch_dict.keys():
     else:
         copy_k = k
     if copy_k in pretrained_weights:
-        target_dict[k] = pretrained_weights[copy_k].clone()
+        if key_prefix in copy_k:
+            print(pretrained_weights[copy_k].clone().shape)
+            target_dict[k] = pretrained_weights[copy_k].clone()[:, 0:unet_in_channels, :, :]
+        else:
+            target_dict[k] = pretrained_weights[copy_k].clone()
     else:
         target_dict[k] = scratch_dict[k].clone()
         print(f'These weights are newly added: {k}')

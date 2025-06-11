@@ -15,7 +15,6 @@ model:
     channels: 4
     cond_stage_trainable: false
     conditioning_key: hybrid
-    use_img_in_clip: false
     # monitor: val/loss_simple_ema
     scale_factor: 0.18215
     use_ema: False
@@ -84,16 +83,16 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 32
+    batch_size: 16
     num_workers: 8
     shuffle_val_dataloader: True
     train:
-      target: ldm.data.control.ObjaverseDataNormal
+      target: ldm.data.control.ObjaverseDataPretrained
       params:
         txt_path: '/mnt/datassd/seeha/3DAnything/zero123/configs/train.txt'
     
     validation:
-      target: ldm.data.control.ObjaverseDataNormal
+      target: ldm.data.control.ObjaverseDataPretrained
       params:
         txt_path: '/mnt/datassd/seeha/3DAnything/zero123/configs/val.txt'
 
@@ -123,5 +122,5 @@ lightning:
   trainer:
     benchmark: True
     max_steps: 200100
-    check_val_every_n_epoch: 50
+    check_val_every_n_epoch: 10
     limit_val_batches: 1

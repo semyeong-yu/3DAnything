@@ -1,6 +1,6 @@
 model:
-  base_learning_rate: 1.0e-05
-  target: ldm.models.diffusion.controlnet.ControlLDM
+  base_learning_rate: 1.0e-04
+  target: ldm.models.diffusion.ddpm.LatentDiffusion
   params:
     linear_start: 0.00085
     linear_end: 0.0120
@@ -10,39 +10,27 @@ model:
     first_stage_key: "image_target"
     cond_stage_key: "image_cond"
     text_stage_key: "image_text"
-    control_key: ""
     image_size: 32
     channels: 4
     cond_stage_trainable: false
     conditioning_key: hybrid
-    use_img_in_clip: false
-    # monitor: val/loss_simple_ema
+    monitor: val/loss_simple_ema
     scale_factor: 0.18215
-    use_ema: False
-    only_mid_control: False
 
-    control_stage_config:
-      target: ldm.modules.diffusionmodules.controlnetmodel.ControlNet
+    scheduler_config: # 10000 warmup steps
+      target: ldm.lr_scheduler.LambdaLinearScheduler
       params:
-        image_size: 32 # unused
-        in_channels: 4
-        hint_channels: 3
-        model_channels: 320
-        attention_resolutions: [ 4, 2, 1 ]
-        num_res_blocks: 2
-        channel_mult: [ 1, 2, 4, 4 ]
-        num_heads: 8
-        use_spatial_transformer: True
-        transformer_depth: 1
-        context_dim: 768
-        use_checkpoint: True
-        legacy: False
+        warm_up_steps: [ 100 ]
+        cycle_lengths: [ 10000000000000 ] # incredibly large number to prevent corner cases
+        f_start: [ 1.e-6 ]
+        f_max: [ 1. ]
+        f_min: [ 1. ]
 
     unet_config:
-      target: ldm.modules.diffusionmodules.controlnetmodel.ControlledUnetModel
+      target: ldm.modules.diffusionmodules.openaimodel.UNetModel
       params:
         image_size: 32 # unused
-        in_channels: 4
+        in_channels: 8
         out_channels: 4
         model_channels: 320
         attention_resolutions: [ 4, 2, 1 ]
@@ -84,7 +72,7 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 32
+    batch_size: 64
     num_workers: 8
     shuffle_val_dataloader: True
     train:
@@ -102,7 +90,7 @@ lightning:
     image_logger:
       target: main.ImageLogger
       params:
-        batch_frequency: 2000
+        batch_frequency: 500
         max_images: 16
         increase_log_steps: False
         log_first_step: True
@@ -118,7 +106,7 @@ lightning:
   modelcheckpoint:
     target: pytorch_lightning.callbacks.ModelCheckpoint
     params:
-      every_n_train_steps: 5000
+      every_n_train_steps: 1000
 
   trainer:
     benchmark: True
