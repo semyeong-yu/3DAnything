@@ -40,7 +40,7 @@ class MultiModalControlNetV3(LatentDiffusion):
         if uncond != 0.05 and getattr(self, "uncond", None) is not None:
             uncond = self.uncond 
         
-        inputs = super().get_input(batch, k, return_first_stage_outputs, cond_key, return_original_cond, bs, uncond) # c : {c_concat : pimg], c_crossattn : [text + pose]}
+        inputs = super().get_input(batch, k, return_first_stage_outputs, cond_key, return_original_cond, bs, uncond, spatial_key=self.control_key) # c : {c_concat : pimg], c_crossattn : [text + pose]}
         z = inputs[0]
         c = inputs[1]
         out = [z, c]
@@ -56,8 +56,8 @@ class MultiModalControlNetV3(LatentDiffusion):
         assert isinstance(cond, dict)
         diffusion_model = self.model.diffusion_model # free from wrapper
         
-        if "canny" not in cond:
-            _latent_hint = cond["canny_latent"]
+        if "spatial" not in cond:
+            _latent_hint = cond["c_latent"]
             _x = torch.cat([x_noisy, _latent_hint], dim=1)
             
             eps = diffusion_model(x=_x, timesteps=t, context=cond["c_pose"], control=None, only_mid_control=self.only_mid_control)
@@ -65,7 +65,7 @@ class MultiModalControlNetV3(LatentDiffusion):
         else:
             cond_txt = cond['c_text']
             
-            _latent_hint = cond["canny_latent"]
+            _latent_hint = cond["c_latent"]
             _x = torch.cat([x_noisy, _latent_hint], dim=1)
             
             # hint로서 주는 것은 model을 또 intialize해줘야 하니까 빼는 것으로 하자.
@@ -83,7 +83,7 @@ class MultiModalControlNetV3(LatentDiffusion):
     def get_unconditional_conditioning(self, batch_size, null_label=[""], image_size=512):
         cond = {}
         cond["c_pose"] = self.get_learned_conditioning(null_label, modality="txt").repeat(batch_size, 1, 1)
-        cond["canny_latent"] = torch.zeros([batch_size, 4, image_size // 8, image_size // 8]).to(self.device)
+        cond["c_latent"] = torch.zeros([batch_size, 4, image_size // 8, image_size // 8]).to(self.device)
         
         return cond
 
@@ -96,7 +96,7 @@ class MultiModalControlNetV3(LatentDiffusion):
         z, c, x, xrec, xc = self.get_input(batch, self.first_stage_key, return_first_stage_outputs=True, return_original_cond=True, bs=N, uncond=0.0)  # control net에 적합한 data generation done
         N = min(z.shape[0], N)
         # c_control = c["c_concat"][0][:N]
-        c_control = c["canny"][:N]
+        c_control = c[self.control_key][:N]
         
         n_row = min(x.shape[0], n_row)
         log["inputs"] = x

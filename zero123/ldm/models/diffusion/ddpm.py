@@ -784,7 +784,7 @@ class LatentDiffusion(DDPM):
     @torch.no_grad()
     # uncond도 실험 요소이다.
     def get_input(self, batch, k, return_first_stage_outputs=False,
-                  cond_key=None, return_original_cond=False, bs=None, uncond=0.05):
+                  cond_key=None, return_original_cond=False, bs=None, uncond=0.05, spatial_key=None):
         # c_concat -> img / c_crossattn -> text (generated from image) + pose
         
         # 여기 분석하기
@@ -827,11 +827,14 @@ class LatentDiffusion(DDPM):
         # z.shape: [8, 4, 64, 64]; c.shape: [8, 1, 768]
         # print('=========== xc shape ===========', xc.shape)
         # 여기서 null text prompt랑 image null prompt를 만들어서, pretrained 정보를 이용할 때는 T2I를 
+        # 여기 키 정보를 따야 한다.
+        
+        spatial_key = spatial_key
         with torch.enable_grad():
             
             # TODO: hard coded here
-            cond["canny"] = super().get_input(batch, "canny").to(self.device)  # canny edge map
-            cond["canny"] = cond["canny"][:num_B]  # [64 - max batch라서 오류 발생, 1, 256, 256]
+            cond["spatial"] = super().get_input(batch, spatial_key).to(self.device)  # canny edge map
+            cond["spatial"] = cond[spatial_key][:num_B]  # [64 - max batch라서 오류 발생, 1, 256, 256]
             
             # NOTE 여기 clip embedding이 text 기반인지 image 기반 인지 알아야함, 역시 image 기반이였다. (image -> latent)
 
@@ -854,8 +857,8 @@ class LatentDiffusion(DDPM):
             # import ipdb; ipdb.set_trace()
             
             # NOTE I2I conditioning
-            clip_img_emb = self.get_learned_conditioning(cond["canny"], modality="image").detach()
-            cond["canny_latent"] = input_mask * self.encode_first_stage(cond["canny"].to(self.device)).mode().detach()
+            clip_img_emb = self.get_learned_conditioning(cond[spatial_key], modality="image").detach()
+            cond["c_latent"] = input_mask * self.encode_first_stage(cond[spatial_key].to(self.device)).mode().detach()
             
             # import ipdb; ipdb.set_trace()
             

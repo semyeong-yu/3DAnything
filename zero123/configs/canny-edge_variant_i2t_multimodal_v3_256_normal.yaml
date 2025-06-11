@@ -15,7 +15,7 @@ model:
     # TODO 여기, 현재는 image embedding을 clip으로 transform하고 있는데 여기 수정 필요
     # TODO data loader랑 controlNet 가져오는 코드보고 2개의 controlNet으로 control하는 방법 참조
     # control_key: "canny"  # 여기는 다른 input으로 control 할 때, depth까지 써보기
-    control_key: canny
+    control_key: normal
     image_size: 32 # 여기 다름 절반임...
     channels: 4
     cond_stage_trainable: false
@@ -116,7 +116,8 @@ data:
         txt_path: "/workspace/code/3DAnything/zero123/configs/train.txt"
         caption_path: "/workspace/code/3DAnything/debug/data/captions.csv"
         patch_size: 256
-        spatial_key: "canny"  # canny edge detection
+        spatial_key: "normal"  # canny edge detection
+
 
     validation:
       target: ldm.data.control.ObjaverseData
@@ -125,7 +126,7 @@ data:
         txt_path: "/workspace/code/3DAnything/zero123/configs/val.txt"
         caption_path: "/workspace/code/3DAnything/debug/data/captions.csv"
         patch_size: 256
-        spatial_key: "canny"  # canny edge detection
+        spatial_key: "normal"  # canny edge detection
 
 lightning:
   callbacks:

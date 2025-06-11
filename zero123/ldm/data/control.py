@@ -12,6 +12,12 @@ from torchvision import transforms
 from einops import rearrange
 import pandas as pd 
 
+DIRECTORY_MAP = {
+    "canny": "cannyedge_render",
+    "normal": "normal_render",
+    "depth": "depth_render",
+}
+
 # NOTE: 여기가 현재 사용하는 data의 정의 부분
 class ObjaverseData(Dataset):
     def __init__(self,
@@ -21,7 +27,8 @@ class ObjaverseData(Dataset):
         default_trans=torch.zeros(3),
         return_paths=False,
         total_view=12,
-        patch_size=256
+        patch_size=256,
+        spatial_key=None
         ):
         
         self.root_dir = Path(root_dir)
@@ -30,7 +37,10 @@ class ObjaverseData(Dataset):
         self.caption_path = caption_path
         if caption_path is not None:
             self.caption = pd.read_csv(caption_path)
-            
+        
+        if spatial_key is not None:
+            self.spatial_key: str = spatial_key
+        assert spatial_key is not None, "Spatial key must be provided for Multimodal variant network."
         
         self.return_paths = return_paths
         self.total_view = total_view
@@ -117,8 +127,8 @@ class ObjaverseData(Dataset):
         target_im = self.process_im(self.load_im(target_img_path))
         
         
-        cond_im = self.process_im(self.load_im(os.path.join(filename, 'cannyedge_render', index_cond + '.png')))
-        # bug was in conditioning
+        cond_im = self.process_im(self.load_im(os.path.join(filename, DIRECTORY_MAP[self.spatial_key], index_cond + '.png')))
+        data[self.spatial_key] = cond_im
         
         # target_RT = np.load(os.path.join(filename, 'annotation', index_target + ".npy"), allow_pickle=True).item()['matrix_world']
         # cond_RT = np.load(os.path.join(filename, 'annotation', index_cond + ".npy"), allow_pickle=True).item()['matrix_world']
@@ -127,8 +137,7 @@ class ObjaverseData(Dataset):
 
         data["image_target"] = target_im
 
-        # 현재는 conditional image를 통해서
-        data["canny"] = cond_im
+        
         data["T"] = self.get_T(target_RT, cond_RT)
         
         if self.caption_path is not None:
