@@ -96,7 +96,7 @@ class MultiModalControlNetV3(LatentDiffusion):
         z, c, x, xrec, xc = self.get_input(batch, self.first_stage_key, return_first_stage_outputs=True, return_original_cond=True, bs=N, uncond=0.0)  # control net에 적합한 data generation done
         N = min(z.shape[0], N)
         # c_control = c["c_concat"][0][:N]
-        c_control = c[self.control_key][:N]
+        c_control = c["spatial"][:N]
         
         n_row = min(x.shape[0], n_row)
         log["inputs"] = x

@@ -829,12 +829,12 @@ class LatentDiffusion(DDPM):
         # 여기서 null text prompt랑 image null prompt를 만들어서, pretrained 정보를 이용할 때는 T2I를 
         # 여기 키 정보를 따야 한다.
         
-        spatial_key = spatial_key
         with torch.enable_grad():
             
             # TODO: hard coded here
+            # import ipdb; ipdb.set_trace()
             cond["spatial"] = super().get_input(batch, spatial_key).to(self.device)  # canny edge map
-            cond["spatial"] = cond[spatial_key][:num_B]  # [64 - max batch라서 오류 발생, 1, 256, 256]
+            cond["spatial"] = cond["spatial"][:num_B]  # [64 - max batch라서 오류 발생, 1, 256, 256]
             
             # NOTE 여기 clip embedding이 text 기반인지 image 기반 인지 알아야함, 역시 image 기반이였다. (image -> latent)
 
@@ -857,8 +857,8 @@ class LatentDiffusion(DDPM):
             # import ipdb; ipdb.set_trace()
             
             # NOTE I2I conditioning
-            clip_img_emb = self.get_learned_conditioning(cond[spatial_key], modality="image").detach()
-            cond["c_latent"] = input_mask * self.encode_first_stage(cond[spatial_key].to(self.device)).mode().detach()
+            clip_img_emb = self.get_learned_conditioning(cond["spatial"], modality="image").detach()
+            cond["c_latent"] = input_mask * self.encode_first_stage(cond["spatial"].to(self.device)).mode().detach()
             
             # import ipdb; ipdb.set_trace()
             
