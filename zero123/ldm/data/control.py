@@ -120,8 +120,10 @@ class ObjaverseData(Dataset):
         cond_im = self.process_im(self.load_im(os.path.join(filename, 'cannyedge_render', index_cond + '.png')))
         # bug was in conditioning
         
-        target_RT = np.load(os.path.join(filename, 'annotation', index_target + ".npy"), allow_pickle=True).item()['matrix_world']
-        cond_RT = np.load(os.path.join(filename, 'annotation', index_cond + ".npy"), allow_pickle=True).item()['matrix_world']
+        # target_RT = np.load(os.path.join(filename, 'annotation', index_target + ".npy"), allow_pickle=True).item()['matrix_world']
+        # cond_RT = np.load(os.path.join(filename, 'annotation', index_cond + ".npy"), allow_pickle=True).item()['matrix_world']
+        target_RT = np.load(os.path.join(filename, 'annotation', index_target + ".npy"), allow_pickle=True).item()['modelview_matrix']
+        cond_RT = np.load(os.path.join(filename, 'annotation', index_cond + ".npy"), allow_pickle=True).item()['modelview_matrix']
 
         data["image_target"] = target_im
 

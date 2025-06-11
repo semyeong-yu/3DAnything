@@ -425,15 +425,15 @@ def save_images(object_file: str) -> None:
             'principal': np.array([256, 256]),
             'source': _src,
             'shape_id': _shape_id,
-            'rendering_scale': _scale,
-            'rendering_offset': np.array(_offset),
+            'rendering_scale': _scale,  # 이게 뭘까?
+            'rendering_offset': np.array(_offset),  # 이게 뭘까?
             'azimuth': args.azimuth,
             'elevation': args.elevation,
             'pose_sampling': args.pose_sampling,
             'strength': args.strength,
-            'matrix_world': matrix_world,
-            'modelview_matrix': modelview_matrix,
-            'projection_matrix': projection_matrix,
+            'matrix_world': matrix_world,  # 이게 뭘까?
+            'modelview_matrix': modelview_matrix,  # 이게 뭘까?
+            'projection_matrix': projection_matrix,  # 이게 뭘까?
             'focal_length': cam.data.lens,
             'sensor_width': cam.data.sensor_width,
             'sensor_height': cam.data.sensor_height

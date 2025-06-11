@@ -833,17 +833,16 @@ class LatentDiffusion(DDPM):
             cond["canny"] = super().get_input(batch, "canny").to(self.device)  # canny edge map
             cond["canny"] = cond["canny"][:num_B]  # [64 - max batch라서 오류 발생, 1, 256, 256]
             
-            
             # NOTE 여기 clip embedding이 text 기반인지 image 기반 인지 알아야함, 역시 image 기반이였다. (image -> latent)
 
-            null_txt_prompt = self.get_learned_conditioning([""], modality="txt").repeat(num_B, 1, 1)  # text embedding을 사용하기 때문에 이게 맞아유
+            null_prompt = self.get_learned_conditioning([""], modality="image").repeat(num_B, 1, 1)  # text embedding을 사용하기 때문에 이게 맞아유
             clip_txt_emb = self.get_learned_conditioning(xc, modality="txt").detach()
+            cond["c_text"] = clip_txt_emb
             # null_prompt = torch.zeros_like(clip_emb)
             
-            clip_img_emb = self.get_learned_conditioning(cond["canny"], modality="image").detach()
             
             # cond["c_crossattn"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]
-            cond["c_text"] = torch.where(prompt_mask, null_txt_prompt, clip_txt_emb)
+            # cond["c_text"] = torch.where(prompt_mask, null_prompt, clip_txt_emb)
             
             # cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb)[:, None, :], T[:, None, :]], dim=-1))]  # explicitly for zero123 control net
             text_len = clip_txt_emb.shape[1]
@@ -853,9 +852,21 @@ class LatentDiffusion(DDPM):
             # cond["c_text_pose"] = [self.cc_projection(torch.cat([torch.where(prompt_mask, null_prompt, clip_emb), T[:, None, :].repeat(1, text_len, 1)], dim=-1))]  # explicitly for zero123 control net
             # cond["c_text_pose"] = self.cc_projection(torch.cat([clip_txt_emb, T[:, None, :].repeat(1, text_len, 1)], dim=-1))  # explicitly for zero123 control net
             # import ipdb; ipdb.set_trace()
+            
+            # NOTE I2I conditioning
+            clip_img_emb = self.get_learned_conditioning(cond["canny"], modality="image").detach()
+            cond["canny_latent"] = input_mask * self.encode_first_stage(cond["canny"].to(self.device)).mode().detach()
+            
+            # import ipdb; ipdb.set_trace()
+            
             cond["c_pose"] = self.cc_projection(
-                torch.cat([clip_img_emb[:, None, :], T[:, None, :]], dim=-1)
+                torch.cat([torch.where(
+                    prompt_mask, null_prompt, clip_img_emb[:, None, :]
+                    ), T[:, None, :]], dim=-1)
             )
+            # cond["c_pose"] = self.cc_projection(
+            #     torch.cat([clip_img_emb[:, None, :], T[:, None, :]], dim=-1)
+            # )
             # 애초에 tensor 입력을 주었어야 하는데
             # [64, 77, 768], [64, 1, 4]
             
@@ -1259,6 +1270,7 @@ class LatentDiffusion(DDPM):
         if ddim:
             ddim_sampler = DDIMSampler(self)
             shape = (self.channels, self.image_size, self.image_size)
+            # import ipdb; ipdb.set_trace()
             samples, intermediates = ddim_sampler.sample(ddim_steps, batch_size,
                                                          shape, cond, verbose=False, **kwargs)
 
