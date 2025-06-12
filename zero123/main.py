@@ -354,7 +354,7 @@ class SetupCallback(Callback):
                 except FileNotFoundError:
                     pass
 
-
+# NOTE: 여기 뒤집어 까면 될듯? 독립적인 method로 빼서 써야겠다. model을 받도록
 class ImageLogger(Callback):
     def __init__(self, batch_frequency, max_images, clamp=True, increase_log_steps=True,
                  rescale=True, disabled=False, log_on_batch_idx=False, log_first_step=False,

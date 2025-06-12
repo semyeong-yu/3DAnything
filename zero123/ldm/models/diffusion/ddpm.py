@@ -839,8 +839,14 @@ class LatentDiffusion(DDPM):
             # NOTE 여기 clip embedding이 text 기반인지 image 기반 인지 알아야함, 역시 image 기반이였다. (image -> latent)
 
             null_prompt = self.get_learned_conditioning([""], modality="image").repeat(num_B, 1, 1)  # text embedding을 사용하기 때문에 이게 맞아유
-            clip_txt_emb = self.get_learned_conditioning(xc, modality="txt").detach()
-            cond["c_text"] = clip_txt_emb
+            if cond_key == "txt":
+                clip_txt_emb = self.get_learned_conditioning(xc, modality="txt").detach()
+                cond["c_text"] = clip_txt_emb
+            else:
+                clip_txt_emb = self.get_learned_conditioning(xc, modality="image").detach()
+                cond["c_text"] = clip_txt_emb[:, None, :]  # [64, 1, 768] -> [64, 768]
+                # TODO 여기 conditioning diffusion model 바꿔쥑
+                
             # null_prompt = torch.zeros_like(clip_emb)
             
             
@@ -1305,6 +1311,7 @@ class LatentDiffusion(DDPM):
         cond["c_concat"] = [torch.zeros([batch_size, 4, image_size // 8, image_size // 8]).to(self.device)]
         return cond
 
+    # pytorch-lightning code를 조금 고쳐서 test에 상응하는 image를 generate하도록 해야겠다.
     @torch.no_grad()
     def log_images(self, batch, N=8, n_row=4, sample=True, ddim_steps=200, ddim_eta=1., return_keys=None,
                    quantize_denoised=True, inpaint=True, plot_denoise_rows=False, plot_progressive_rows=True,

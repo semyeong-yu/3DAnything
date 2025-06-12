@@ -145,6 +145,73 @@ class MultiModalControlNetV3(LatentDiffusion):
         # import ipdb; ipdb.set_trace()
 
         return log
+    
+    @torch.no_grad()
+    def log_val_images(self, batch, N=4, n_row=2, sample=False, ddim_steps=50, ddim_eta=0.0, plot_denoise_rows=False, plot_diffusion_rows=False, unconditional_guidance_scale=9.0, unconditional_guidance_label=None, **kwargs):
+        use_ddim = ddim_steps is not None
+
+        log = dict()
+        z, c, x, xrec, xc = self.get_input(batch, self.first_stage_key, return_first_stage_outputs=True, return_original_cond=True, bs=N, uncond=0.0)  # control net에 적합한 data generation done
+        N = min(z.shape[0], N)
+        # c_control = c["c_concat"][0][:N]
+        c_control = c["spatial"][:N]
+        
+        n_row = min(x.shape[0], n_row)
+        log["object_id"] = batch["object_id"][:N]
+        
+        _viewpoint_dict = batch["viewpoint_ids"]
+        _viewpoint_dict["cond"] = _viewpoint_dict["cond"][:N]
+        _viewpoint_dict["target"] = _viewpoint_dict["target"][:N]
+        log["viewpoint_ids"] = _viewpoint_dict
+        log["inputs"] = x
+        log["reconstruction"] = xrec
+        log["control"] = c_control
+        
+        if plot_diffusion_rows:
+            diffusion_row = list()
+            z_start = z[:n_row]
+            for t in range(self.num_timesteps):
+                if t % self.log_every_t == 0 or t == self.num_timesteps - 1:
+                    t = repeat(torch.tensor([t]), '1 -> b', b=n_row)
+                    t = t.to(self.device).long()
+                    noise = torch.randn_like(z_start)
+                    z_noisy = self.q_sample(x_start=z_start, t=t, noise=noise)
+                    diffusion_row.append(self.decode_first_stage(z_noisy))
+
+            diffusion_row = torch.stack(diffusion_row)  # n_log_step, n_row, C, H, W
+            diffusion_grid = rearrange(diffusion_row, 'n b c h w -> b n c h w')
+            diffusion_grid = rearrange(diffusion_grid, 'b n c h w -> (b n) c h w')
+            diffusion_grid = make_grid(diffusion_grid, nrow=diffusion_row.shape[0])
+            log["diffusion_row"] = diffusion_grid
+
+        if sample:
+            samples, z_denoise_row = self.sample_log(cond=c,
+                                                     batch_size=N, ddim=use_ddim,
+                                                     ddim_steps=ddim_steps, eta=ddim_eta)
+            x_samples = self.decode_first_stage(samples)
+            log["samples"] = x_samples
+            if plot_denoise_rows:
+                denoise_grid = self._get_denoise_row_from_list(z_denoise_row)
+                log["denoise_row"] = denoise_grid
+
+        if unconditional_guidance_scale > 1.0:
+            uc_full = self.get_unconditional_conditioning(batch_size=N, null_label=[""], image_size=x.shape[-1])
+            
+            samples_cfg, _ = self.sample_log(cond=c,
+                                             batch_size=N, ddim=use_ddim,
+                                             ddim_steps=ddim_steps, eta=ddim_eta,
+                                             unconditional_guidance_scale=unconditional_guidance_scale,
+                                             unconditional_conditioning=uc_full,
+                                             )
+            x_samples_cfg = self.decode_first_stage(samples_cfg)
+            log[f"samples_cfg_scale_{unconditional_guidance_scale:.2f}"] = x_samples_cfg
+        
+        if batch.get("txt", None) is not None:
+            log["txt"] = batch["txt"][:N]
+        
+        # import ipdb; ipdb.set_trace()
+
+        return log
 
     def configure_optimizers(self):
         lr = self.learning_rate

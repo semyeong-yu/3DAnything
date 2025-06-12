@@ -13,6 +13,7 @@ from einops import rearrange
 import pandas as pd 
 
 DIRECTORY_MAP = {
+    "rgb": "image_render",
     "canny": "cannyedge_render",
     "normal": "normal_render",
     "depth": "depth_render",
@@ -28,7 +29,9 @@ class ObjaverseData(Dataset):
         return_paths=False,
         total_view=12,
         patch_size=256,
-        spatial_key=None
+        spatial_key=None,
+        verbose:bool=False,
+        determin_view:bool=False,
         ):
         
         self.root_dir = Path(root_dir)
@@ -58,6 +61,9 @@ class ObjaverseData(Dataset):
         # with open('/mnt/datassd/seeha/data/3D/paths.txt') as f:
         with open(txt_path) as f:
             self.paths = f.read().splitlines()
+        
+        self.verbose = verbose
+        self.determin_view = determin_view
             
         # print('============= length of dataset %d =============' % len(self.paths))
         
@@ -115,9 +121,13 @@ class ObjaverseData(Dataset):
         meta_class_name = filename.split('/')[-2]
         class_name = filename.split('/')[-1]
         base_name_list = self.caption[(self.caption["meta_class"] == meta_class_name) & (self.caption["class"] == class_name)]["base_name"].values
-        index_target, index_cond = np.random.choice(base_name_list, size=2, replace=False)
-        index_target = index_target.split('.')[0]
-        index_cond = index_cond.split('.')[0]
+        
+        if self.determin_view:
+            index_target, index_cond = ("001", "000")
+        else:    
+            index_target, index_cond = np.random.choice(base_name_list, size=2, replace=False)
+            index_target = index_target.split('.')[0]
+            index_cond = index_cond.split('.')[0]
         
         if self.return_paths:
             data["path"] = str(filename)
@@ -126,19 +136,25 @@ class ObjaverseData(Dataset):
         target_img_path = os.path.join(filename, 'image_render', index_target + '.png')
         target_im = self.process_im(self.load_im(target_img_path))
         
+        source_rgb = self.process_im(self.load_im(os.path.join(filename, DIRECTORY_MAP[self.spatial_key], index_cond + '.png')))
+        data["rgb"] = source_rgb
         
         cond_im = self.process_im(self.load_im(os.path.join(filename, DIRECTORY_MAP[self.spatial_key], index_cond + '.png')))
         data[self.spatial_key] = cond_im
         
-        # target_RT = np.load(os.path.join(filename, 'annotation', index_target + ".npy"), allow_pickle=True).item()['matrix_world']
-        # cond_RT = np.load(os.path.join(filename, 'annotation', index_cond + ".npy"), allow_pickle=True).item()['matrix_world']
         target_RT = np.load(os.path.join(filename, 'annotation', index_target + ".npy"), allow_pickle=True).item()['modelview_matrix']
         cond_RT = np.load(os.path.join(filename, 'annotation', index_cond + ".npy"), allow_pickle=True).item()['modelview_matrix']
 
         data["image_target"] = target_im
 
-        
         data["T"] = self.get_T(target_RT, cond_RT)
+        
+        if self.verbose:
+            data["object_id"] = f"{meta_class_name}/{class_name}"
+            data["viewpoint_ids"] = {
+                "cond": index_cond,
+                "target": index_target
+            }
         
         if self.caption_path is not None:
             split_path = target_img_path.split('/')
