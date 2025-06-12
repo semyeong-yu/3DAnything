@@ -1,3 +1,6 @@
+# 3DAnything: Generating Novel-view Images with any 3D Annotations
+![image](https://github.com/user-attachments/assets/6a57f86b-989b-4b5d-a177-768ff88a5603)
+
 # prerequisites
 
 ## libraries
