@@ -233,7 +233,7 @@ class ObjaverseData(Dataset):
             data["path"] = str(filename)
         
         target_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_target)))
-        cond_im = self.process_im(self.load_im(os.path.join(filename, 'cannyedge_render', '%03d.png' % index_cond)))
+        cond_im = self.process_im(self.load_im(os.path.join(filename, self.cond_prefix, '%03d.png' % index_cond)))
         # cond_im = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_cond)))
         cond_text = self.process_im(self.load_im(os.path.join(filename, 'image_render', '%03d.png' % index_cond)))
         
