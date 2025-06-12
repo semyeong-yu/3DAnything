@@ -19,7 +19,7 @@
 - [Processed Weights](https://huggingface.co/JH-C-k/diffusion_project_weight)
 
 ### validation purpose
-- [Trained Weights](https://huggingface.co/JH-C-k/diffusion_project_weight_trained)
+- [Trained Weights](https://huggingface.co/JH-C-k/ai618_trained)
 
 # Training
 - Please change the weight `path` in `normal_variant_i2t_multimodal_v3_256.yaml` appropriately after downloading the weights from `Processed Weights`. then run the following command in the `zero123` directory to train the model:
